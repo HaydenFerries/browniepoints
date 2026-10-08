@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, HeartHandshake, ListPlus, Sparkles, X } from 'lucide-react';
+import { ChevronRight, HeartHandshake, ListPlus, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useLoaded } from '../app/store';
 import { BrownieIcon } from '../components/Brownie';
 import { Jar } from '../components/Jar';
@@ -73,6 +73,25 @@ export function Home({ go }: { go: (t: Tab) => void }) {
           </h2>
         </div>
         <div className="stack-sm">
+          {state.admin?.pending ? (
+            <article className="card action-card needs-you">
+              <div className="ac-icon">
+                <ShieldCheck size={20} />
+              </div>
+              <div className="ac-main">
+                <p className="kicker">Admin</p>
+                <h3>
+                  {state.admin.pending} {state.admin.pending === 1 ? 'person wants' : 'people want'} in
+                </h3>
+                <p className="meta">New sign-ups wait for your approval.</p>
+              </div>
+              <div className="ac-actions">
+                <button className="btn btn-caramel sm" onClick={() => (location.hash = 'admin')}>
+                  Review sign-ups
+                </button>
+              </div>
+            </article>
+          ) : null}
           {d.claimsToReview.map((c) => (
             <ReviewClaimCard key={c.id} claim={c} />
           ))}
@@ -82,7 +101,7 @@ export function Home({ go }: { go: (t: Tab) => void }) {
           {d.toPrice.map((r) => (
             <PriceCard key={r.id} reward={r} />
           ))}
-          {d.actionCount === 0 && (
+          {d.actionCount === 0 && !state.admin?.pending && (
             <div className="all-clear">
               <BrownieIcon size={40} />
               <div>

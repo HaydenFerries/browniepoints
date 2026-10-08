@@ -9,6 +9,8 @@ import { Tasks } from '../screens/Tasks';
 import { Treats } from '../screens/Treats';
 import { History } from '../screens/History';
 import { Pair } from '../screens/Pair';
+import { Waiting } from '../screens/Waiting';
+import { AdminPortal } from '../screens/Admin';
 import { NewPasswordSheet, Welcome } from '../screens/Welcome';
 import { ProfileSheet } from '../screens/Profile';
 import { SheetHost, useSheets } from '../screens/sheets';
@@ -38,6 +40,7 @@ function Backdrop() {
 
 function Shell() {
   const { status, state, loadError, recovery, backend, refresh } = useApp();
+  const hash = useHash();
   const which =
     status === 'loading' || (status === 'signed-in' && !state && !loadError)
       ? 'splash'
@@ -45,9 +48,13 @@ function Shell() {
         ? 'welcome'
         : !state
           ? 'error'
-          : !state.partner
-            ? 'pair'
-            : 'main';
+          : (state.me.status ?? 'approved') !== 'approved'
+            ? 'waiting'
+            : hash === 'admin' && state.me.is_admin
+              ? 'admin'
+              : !state.partner
+                ? 'pair'
+                : 'main';
   // each screen starts at the top (e.g. Welcome → Home after signing in)
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -72,6 +79,13 @@ function Shell() {
         </div>
       </div>
     );
+  else if (which === 'waiting') screen = <Waiting />;
+  else if (which === 'admin')
+    screen = (
+      <SheetHost renderProfile={() => null}>
+        <AdminPortal />
+      </SheetHost>
+    );
   else if (which === 'pair') screen = <Pair />;
   else screen = <Main />;
   return (
@@ -80,6 +94,16 @@ function Shell() {
       {recovery && <NewPasswordSheet />}
     </>
   );
+}
+
+function useHash() {
+  const [hash, setHash] = useState(() => location.hash.replace('#', ''));
+  useEffect(() => {
+    const on = () => setHash(location.hash.replace('#', ''));
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  return hash;
 }
 
 function Splash() {
@@ -144,6 +168,7 @@ function TopBar() {
         <button className="couple-btn" onClick={() => sheets.open({ kind: 'profile' })} aria-label="Your profile">
           <Avatar emoji={state.me.avatar} size={34} />
           {state.partner && <Avatar emoji={state.partner.avatar} tone="berry" size={34} />}
+          {state.admin?.pending ? <span className="tab-badge couple-badge">{state.admin.pending}</span> : null}
         </button>
       </div>
       <Drip />

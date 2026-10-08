@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HeartCrack, LogOut, RefreshCw, Shuffle } from 'lucide-react';
+import { HeartCrack, LogOut, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
 import { useLoaded } from '../app/store';
 import { leaveDemo } from '../lib/backend';
 import { Avatar, Sheet } from '../components/ui';
@@ -83,6 +83,22 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
             }
           >
             <HeartCrack size={16} /> Unpair
+          </button>
+        </section>
+      )}
+
+      {state.me.is_admin && (
+        <section className="profile-section">
+          <h3 className="mini-title">Admin</h3>
+          <button
+            className="btn btn-ghost block"
+            onClick={() => {
+              onClose();
+              location.hash = 'admin';
+            }}
+          >
+            <ShieldCheck size={16} /> Open admin portal
+            {state.admin?.pending ? <span className="badge">{state.admin.pending} waiting</span> : null}
           </button>
         </section>
       )}

@@ -1315,6 +1315,17 @@ input::placeholder,
 textarea::placeholder {
   color: rgba(248, 236, 217, 0.32);
 }
+.captcha {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* invisible check in progress: take no room (cancels the parent's flex gap) */
+.captcha.is-collapsed {
+  height: 0;
+  margin-top: -14px;
+  overflow: hidden;
+}
 .form-error {
   padding: 10px 12px;
   border-radius: 12px;
@@ -1860,6 +1871,111 @@ textarea::placeholder {
   color: var(--cream-dim);
   font-size: 14px;
   text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Waiting for approval
+   -------------------------------------------------------------------------- */
+.waiting-screen {
+  max-width: var(--col);
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: calc(32px + env(safe-area-inset-top)) 18px calc(32px + env(safe-area-inset-bottom));
+}
+.waiting-jar {
+  width: 150px;
+  align-self: center;
+  margin-bottom: 4px;
+  animation: bob 3.2s ease-in-out infinite;
+}
+.waiting-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(240, 180, 94, 0.14);
+  color: var(--caramel-hi);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------------------
+   Admin portal
+   -------------------------------------------------------------------------- */
+.admin-screen {
+  max-width: var(--col);
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: calc(24px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+}
+.admin-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.admin-head .icon-btn {
+  margin-top: 6px;
+}
+.admin-email {
+  font-size: 13.5px;
+  color: var(--cream-dim);
+  overflow-wrap: anywhere;
+}
+.member-list {
+  list-style: none;
+  padding: 2px 14px;
+}
+.member-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.member-list li + li {
+  border-top: 1px solid var(--line);
+}
+.member-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.member-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+.member-name .tag {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.member-main .meta {
+  margin-top: 2px;
+}
+.couple-btn {
+  position: relative;
+}
+.couple-badge {
+  top: -2px;
+  right: -2px;
+}
+.btn .badge {
+  margin-left: 4px;
 }
 
 /* --------------------------------------------------------------------------

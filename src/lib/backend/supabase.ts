@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Activity, AppState, RewardInput, TaskInput, UUID } from '../types';
+import type { Activity, AdminUser, AppState, RewardInput, TaskInput, UUID } from '../types';
 import type { AuthEvent, Backend } from './types';
 
 export function createSupabaseBackend(url: string, key: string): Backend {
@@ -36,21 +36,22 @@ export function createSupabaseBackend(url: string, key: string): Backend {
       return () => data.subscription.unsubscribe();
     },
 
-    async signUp({ email, password, displayName, avatar }) {
+    async signUp({ email, password, displayName, avatar, captchaToken }) {
       const { data, error } = await sb.auth.signUp({
         email,
         password,
         options: {
           data: { display_name: displayName, avatar },
           emailRedirectTo: window.location.origin + window.location.pathname,
+          captchaToken,
         },
       });
       if (error) throw new Error(friendly(error.message));
       return { needsConfirmation: !data.session };
     },
 
-    async signIn(email, password) {
-      const { error } = await sb.auth.signInWithPassword({ email, password });
+    async signIn(email, password, captchaToken) {
+      const { error } = await sb.auth.signInWithPassword({ email, password, options: { captchaToken } });
       if (error) throw new Error(friendly(error.message));
     },
 
@@ -58,9 +59,10 @@ export function createSupabaseBackend(url: string, key: string): Backend {
       await sb.auth.signOut();
     },
 
-    async requestPasswordReset(email) {
+    async requestPasswordReset(email, captchaToken) {
       const { error } = await sb.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + window.location.pathname,
+        captchaToken,
       });
       if (error) throw new Error(friendly(error.message));
     },
@@ -117,6 +119,10 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     cancelRedemption: (id) => rpc('cancel_redemption', { p_redemption_id: id }),
     deliverRedemption: (id) => rpc('deliver_redemption', { p_redemption_id: id }),
     giftBrownies: (amount, note) => rpc('gift_brownies', { p_amount: amount, p_note: note }),
+
+    adminListUsers: () => rpc<AdminUser[]>('admin_list_users'),
+    adminApprove: (id) => rpc('admin_approve', { p_user: id }),
+    adminRemove: (id) => rpc('admin_remove_user', { p_user: id }),
   };
 }
 
@@ -125,6 +131,7 @@ function friendly(message: string): string {
   if (/email not confirmed/i.test(message)) return 'Check your inbox and confirm your email first.';
   if (/user already registered/i.test(message)) return 'There’s already an account with that email. Try signing in.';
   if (/password should be at least/i.test(message)) return 'Passwords need at least 6 characters.';
+  if (/captcha/i.test(message)) return 'The human check didn’t go through. Give it a moment and try again.';
   if (/rate limit/i.test(message)) return 'Too many emails sent recently. Try again in a little while.';
   if (/failed to fetch|networkerror/i.test(message)) return 'Can’t reach the bakery. Check your connection?';
   return message;

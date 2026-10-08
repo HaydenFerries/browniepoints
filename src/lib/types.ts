@@ -10,6 +10,9 @@ export interface Profile {
   pair_code?: string; // only present on your own profile
   couple_id: UUID | null;
   created_at: string;
+  /** Invite-only: new accounts wait for an admin. Missing on older databases → approved. */
+  status?: 'pending' | 'approved';
+  is_admin?: boolean;
 }
 
 export interface Task {
@@ -106,6 +109,22 @@ export interface AppState {
   activity: Activity[];
   balances: Record<UUID, number>;
   earned: Record<UUID, number>;
+  /** Only for admins. */
+  admin?: { pending: number } | null;
+}
+
+/** A row in the admin portal. */
+export interface AdminUser {
+  id: UUID;
+  display_name: string;
+  avatar: string;
+  status: 'pending' | 'approved';
+  is_admin: boolean;
+  email: string | null;
+  created_at: string;
+  last_sign_in_at: string | null;
+  email_confirmed_at: string | null;
+  partner_name: string | null;
 }
 
 export interface TaskInput {

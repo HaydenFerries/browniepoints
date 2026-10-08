@@ -1,14 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Heart } from 'lucide-react';
 import { useApp } from '../app/store';
 import { readInvite } from '../app/invite';
 import { enterDemo, supabaseConfigured } from '../lib/backend';
 import hero from '../assets/generated/hero.webp';
 import { BrownieIcon } from '../components/Brownie';
+import { Captcha, CAPTCHA_SITE_KEY, type CaptchaHandle } from '../components/Captcha';
 import { Segmented, Sheet } from '../components/ui';
 import { AVATARS } from './Profile';
 
 const AUTOSEED = 'bp-demo-autoseed';
+
+/** Bot check (Turnstile) for the real backend; the demo has nothing to protect. */
+function useCaptcha(mode: 'supabase' | 'demo') {
+  const enabled = mode === 'supabase' && !!CAPTCHA_SITE_KEY;
+  const [token, setToken] = useState<string | null>(null);
+  const ref = useRef<CaptchaHandle>(null);
+  return {
+    enabled,
+    token: token ?? undefined,
+    waiting: enabled && !token,
+    element: enabled ? <Captcha ref={ref} onToken={setToken} /> : null,
+    reset: () => ref.current?.reset(),
+  };
+}
 
 export function Welcome() {
   const { backend, toast } = useApp();
@@ -22,6 +37,7 @@ export function Welcome() {
   const [error, setError] = useState<string | null>(null);
   const [confirmSent, setConfirmSent] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const captcha = useCaptcha(backend.mode);
 
   // "Try the demo" from the real app reloads into demo mode, then seeds here.
   useEffect(() => {
@@ -37,15 +53,16 @@ export function Welcome() {
     setError(null);
     try {
       if (mode === 'create') {
-        const { needsConfirmation } = await backend.signUp({ email, password, displayName: name, avatar });
+        const { needsConfirmation } = await backend.signUp({ email, password, displayName: name, avatar, captchaToken: captcha.token });
         if (needsConfirmation) setConfirmSent(true);
       } else {
-        await backend.signIn(email, password);
+        await backend.signIn(email, password, captcha.token);
       }
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+      captcha.reset(); // tokens are single-use
     }
   }
 
@@ -138,9 +155,16 @@ export function Welcome() {
                 placeholder={mode === 'create' ? 'At least 6 characters' : ''}
               />
             </label>
+            {captcha.element}
             {error && <p className="form-error">{error}</p>}
-            <button className="btn btn-caramel block lg" disabled={busy}>
-              {mode === 'create' ? 'Start baking' : 'Sign in'} <ArrowRight size={18} />
+            <button className={`btn btn-caramel block lg ${captcha.waiting ? 'is-pending' : ''}`} disabled={busy || captcha.waiting}>
+              {captcha.waiting ? (
+                'Checking you’re human…'
+              ) : (
+                <>
+                  {mode === 'create' ? 'Start baking' : 'Sign in'} <ArrowRight size={18} />
+                </>
+              )}
             </button>
             {mode === 'signin' && backend.mode === 'supabase' && (
               <button type="button" className="link center-block" onClick={() => setResetOpen(true)}>
@@ -169,6 +193,7 @@ function ResetSheet({ initialEmail, onClose, onSent }: { initialEmail: string; o
   const [email, setEmail] = useState(initialEmail);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const captcha = useCaptcha(backend.mode);
   return (
     <Sheet
       open
@@ -177,22 +202,23 @@ function ResetSheet({ initialEmail, onClose, onSent }: { initialEmail: string; o
       subtitle="We’ll email you a link to set a new one."
       footer={
         <button
-          className="btn btn-caramel grow"
-          disabled={busy || !email}
+          className={`btn btn-caramel grow ${captcha.waiting ? 'is-pending' : ''}`}
+          disabled={busy || !email || captcha.waiting}
           onClick={async () => {
             setBusy(true);
             try {
-              await backend.requestPasswordReset(email);
+              await backend.requestPasswordReset(email, captcha.token);
               onSent();
               onClose();
             } catch (e) {
               setError((e as Error).message);
+              captcha.reset();
             } finally {
               setBusy(false);
             }
           }}
         >
-          Send link
+          {captcha.waiting ? 'Checking you’re human…' : 'Send link'}
         </button>
       }
     >
@@ -200,6 +226,7 @@ function ResetSheet({ initialEmail, onClose, onSent }: { initialEmail: string; o
         <span className="field-label">Email</span>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
       </label>
+      {captcha.element}
       {error && <p className="form-error">{error}</p>}
     </Sheet>
   );

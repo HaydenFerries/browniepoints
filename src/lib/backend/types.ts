@@ -1,4 +1,4 @@
-import type { Activity, AppState, Profile, RewardInput, TaskInput, UUID } from '../types';
+import type { Activity, AdminUser, AppState, Profile, RewardInput, TaskInput, UUID } from '../types';
 
 export type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'PASSWORD_RECOVERY' | 'OTHER';
 
@@ -10,10 +10,17 @@ export interface Backend {
   currentUserId(): Promise<UUID | null>;
   currentEmail(): Promise<string | null>;
   onAuthChange(cb: (userId: UUID | null, event: AuthEvent) => void): () => void;
-  signUp(input: { email: string; password: string; displayName: string; avatar: string }): Promise<{ needsConfirmation: boolean }>;
-  signIn(email: string, password: string): Promise<void>;
+  // captchaToken: from Turnstile; required by Supabase once captcha is enabled there
+  signUp(input: {
+    email: string;
+    password: string;
+    displayName: string;
+    avatar: string;
+    captchaToken?: string;
+  }): Promise<{ needsConfirmation: boolean }>;
+  signIn(email: string, password: string, captchaToken?: string): Promise<void>;
   signOut(): Promise<void>;
-  requestPasswordReset(email: string): Promise<void>;
+  requestPasswordReset(email: string, captchaToken?: string): Promise<void>;
   updatePassword(password: string): Promise<void>;
 
   getState(): Promise<AppState>;
@@ -41,6 +48,11 @@ export interface Backend {
   cancelRedemption(id: UUID): Promise<void>;
   deliverRedemption(id: UUID): Promise<void>;
   giftBrownies(amount: number, note: string): Promise<void>;
+
+  // Admin portal (admins only; the database enforces it)
+  adminListUsers(): Promise<AdminUser[]>;
+  adminApprove(id: UUID): Promise<void>;
+  adminRemove(id: UUID): Promise<void>;
 
   /** Demo-only helpers (undefined on the real backend). */
   demo?: {

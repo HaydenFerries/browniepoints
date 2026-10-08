@@ -55,6 +55,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [burst, setBurst] = useState(0);
   const toastId = useRef(1);
   const lastBalance = useRef<number | null>(null);
+  const lastStatus = useRef<string | null>(null);
 
   const toast = useCallback((text: string, tone: ToastTone = 'info', delta?: number | null) => {
     const id = toastId.current++;
@@ -70,12 +71,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const bal = s.balances[s.me.id] ?? 0;
       if (lastBalance.current != null && bal > lastBalance.current) celebrate();
       lastBalance.current = bal;
+      const st = s.me.status ?? 'approved';
+      if (lastStatus.current === 'pending' && st === 'approved') {
+        toast('You’re approved! Welcome to the bakery.', 'success');
+        celebrate();
+      }
+      lastStatus.current = st;
       setState(s);
       setLoadError(null);
     } catch (e) {
       setLoadError((e as Error).message);
     }
-  }, [backend, celebrate]);
+  }, [backend, celebrate, toast]);
 
   // Auth
   useEffect(() => {
@@ -93,6 +100,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     lastBalance.current = null;
+    lastStatus.current = null;
     setState(null);
     if (userId) refresh();
   }, [userId, refresh]);

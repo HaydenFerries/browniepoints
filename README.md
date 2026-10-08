@@ -23,6 +23,16 @@ Changes show up live on the other phone.
 
 You can also **Treat** your partner with a few spontaneous brownies and a note.
 
+## Invite-only sign-ups
+
+New accounts start as **pending** and only see an "Account waiting for approval" screen.
+The database itself refuses every action from a pending account, so it can't pair, see
+anyone or create anything. Admins approve or reject sign-ups from the **Admin portal** in
+the app (Profile → Admin portal). Rejecting deletes the account.
+
+Sign-up, sign-in and password reset are also protected by a
+[Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) captcha.
+
 ## Tech
 
 - **Vite + React + TypeScript**, installable as a PWA (add to home screen on iOS/Android).
@@ -30,7 +40,7 @@ You can also **Treat** your partner with a few spontaneous brownies and a note.
   functions that enforce the rules: you can't approve your own task, price your own
   wish, or overspend. Balances are a ledger, never a stored number.
 - **Demo mode**: with no Supabase keys the app runs entirely in the browser (open two
-  tabs to play both partners). The deployed site also offers a sample-data demo.
+  tabs to play both partners). Any deployment also offers a sample-data demo.
 
 ## Run it locally
 
@@ -39,54 +49,86 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-Without `.env.local` keys you're in demo mode. To test on your phone over Wi-Fi:
+Without keys in `.env.local` you're in demo mode. To test on your phone over Wi-Fi:
 `npm run dev -- --host`, then open the "Network" URL it prints.
 
 Other scripts:
 
 ```bash
 npm run build        # type-check + production build into dist/
-npm run test:db      # runs the Supabase migration on PGlite and checks every rule
+npm run test:db      # runs the Supabase migrations on PGlite and checks every rule
 npm run images       # regenerate brownie cut-outs/icons from assets-src/
 ```
 
-## Connect Supabase
+## Host your own copy
 
-1. **Create the database.** In Supabase → SQL Editor, paste and run
-   [`supabase/migrations/20261009000000_brownie_points.sql`](supabase/migrations/20261009000000_brownie_points.sql).
-   (If the GitHub integration is set to deploy migrations, it picks this file up instead.)
-   It's safe to run again.
-2. **Auth settings** (Authentication → Sign In / Providers → Email):
-   - For the smoothest start, turn **off "Confirm email"**. Otherwise new accounts must
-     click a confirmation link first, and Supabase's built-in mailer only sends a few
-     emails per hour.
-   - Under Authentication → URL Configuration, set **Site URL** to
-     `https://haydenferries.github.io/browniepoints/` and add `http://localhost:5173` to
-     **Redirect URLs** (used by confirmation and password-reset emails).
-3. **Local keys.** In `.env.local`, fill in `VITE_SUPABASE_PUBLISHABLE_KEY` from Project
-   Settings → API Keys (the *publishable* / anon key, never the secret / service_role
-   key). The URL is already set.
+You need a free [Supabase](https://supabase.com) project, a GitHub repo with Pages, and
+(for the captcha) a free Cloudflare account.
 
-## Deploy to GitHub Pages
+### 1. Database
 
-1. Repo → Settings → Pages → **Source: GitHub Actions**.
-2. Repo → Settings → Secrets and variables → Actions → **Variables** tab, add:
-   - `VITE_SUPABASE_URL` = `https://xkchxhtzdkfxnqrycxlc.supabase.co`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY` = your publishable key
-3. Push to `main`. The workflow tests the SQL, builds, and publishes to
-   `https://haydenferries.github.io/browniepoints/`.
+In Supabase → **SQL Editor**, run each file in [`supabase/migrations/`](supabase/migrations)
+in order (or let Supabase's GitHub integration apply them). They're safe to re-run.
+
+Then make yourself the admin, using the email you signed up with in the app:
+
+```sql
+update public.profiles set is_admin = true, status = 'approved'
+where id = (select id from auth.users where email = 'you@example.com');
+```
+
+### 2. Auth settings
+
+- **Authentication → Sign In / Providers → Email**: optionally turn off *Confirm email*
+  (Supabase's built-in mailer only sends a few emails per hour).
+- **Authentication → URL Configuration**: set *Site URL* to your deployed address
+  (e.g. `https://<github-user>.github.io/<repo>/`) and add `http://localhost:5173` to
+  *Redirect URLs*.
+
+### 3. Keys
+
+| Setting | Where it comes from | Used by |
+|---|---|---|
+| `VITE_SUPABASE_URL` | Supabase → Project Settings → API | the app |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API Keys (*publishable* / anon) | the app |
+| `VITE_TURNSTILE_SITE_KEY` | Cloudflare → Turnstile → your widget (*site key*) | the app |
+
+For local development put them in `.env.local` (see [`.env.example`](.env.example); it's
+git-ignored). For the deployed site add them as repository **Variables** (Settings →
+Secrets and variables → Actions → Variables).
+
+These three are public by design and end up in the website's code. Two keys must
+**never** go in the app, the repo or its variables: Supabase's *secret / service_role*
+key, and Turnstile's *secret key* (that one goes only into Supabase, step 5).
+
+### 4. Deploy to GitHub Pages
+
+Settings → Pages → **Source: GitHub Actions**, then push to `main`. The
+[workflow](.github/workflows/deploy.yml) tests the SQL, builds, and publishes.
+
+### 5. Turn on the captcha (after the site is deployed)
+
+1. Cloudflare → **Turnstile** → *Add widget*, hostname = your Pages domain
+   (add `localhost` too if you want to sign in from `npm run dev`).
+2. Make sure `VITE_TURNSTILE_SITE_KEY` is set and the site has been redeployed.
+3. Supabase → Authentication → **Bot and Abuse Protection** (may be called *Attack
+   Protection*): enable CAPTCHA, choose Turnstile, paste the **secret key**.
+
+Do step 3 last: once it's on, Supabase rejects sign-ins that don't carry a captcha
+token, so a site without the site key would lock everyone out. People already signed in
+are unaffected.
 
 ## Project layout
 
 ```
 src/
   app/            App shell, routing, store (state, live updates, toasts)
-  screens/        Welcome, Pair, Home, Tasks, Rewards, History, Profile, sheets
-  components/     Brownie icon, Jar, chocolate Drip, sheets, pickers
+  screens/        Welcome, Waiting, Pair, Home, Tasks, Rewards, History, Profile, Admin
+  components/     Brownie icon, Jar, chocolate Drip, Captcha, sheets, pickers
   lib/backend/    Backend interface + Supabase and in-browser demo implementations
 supabase/
   migrations/     Schema, row-level security and all RPC functions
-  tests/          PGlite test that plays both partners through every rule
+  tests/          PGlite test that plays every role through every rule
 scripts/          Image processing (brownie cut-out, app icons, hero)
 assets-src/       Original photos
 ```

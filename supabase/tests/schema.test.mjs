@@ -5,18 +5,20 @@ import { PGlite } from '@electric-sql/pglite';
 import { readdirSync, readFileSync } from 'node:fs';
 
 const dir = new URL('../migrations/', import.meta.url);
-const migration = readdirSync(dir)
+const migrations = readdirSync(dir)
   .filter((f) => f.endsWith('.sql'))
   .sort()
-  .map((f) => readFileSync(new URL(f, dir), 'utf8'))
-  .join('\n');
+  .map((f) => readFileSync(new URL(f, dir), 'utf8'));
 const db = new PGlite();
 
 await db.exec(`
   create role anon nologin;
   create role authenticated nologin;
   create schema auth;
-  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}'::jsonb);
+  create table auth.users (
+    id uuid primary key, email text, raw_user_meta_data jsonb default '{}'::jsonb,
+    created_at timestamptz default now(), last_sign_in_at timestamptz, email_confirmed_at timestamptz
+  );
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to anon, authenticated;
@@ -24,17 +26,24 @@ await db.exec(`
   create publication supabase_realtime;
 `);
 
-await db.exec(migration);
-await db.exec(migration); // must be safe to re-run
-console.log('✓ migration applied twice');
-
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const C = '33333333-3333-4333-8333-333333333333';
+const D = '44444444-4444-4444-8444-444444444444'; // a random sign-up that stays pending
+const E = '55555555-5555-4555-8555-555555555555'; // signed up before sign-ups needed approval
+
+// First migration, an early account, then the rest; then everything again.
+await db.exec(migrations[0]);
+await db.query(`insert into auth.users (id, email) values ($1, 'early@x.test')`, [E]);
+for (const m of migrations.slice(1)) await db.exec(m);
+for (const m of migrations) await db.exec(m); // must be safe to re-run
+console.log(`✓ ${migrations.length} migrations applied twice`);
+
 await db.query(`insert into auth.users (id, email, raw_user_meta_data) values
   ($1, 'a@x.test', '{"display_name":"Alex","avatar":"🧁"}'),
   ($2, 'b@x.test', '{"display_name":"Sam"}'),
-  ($3, 'c@x.test', '{}')`, [A, B, C]);
+  ($3, 'c@x.test', '{}'),
+  ($4, 'd@x.test', '{"display_name":"Random"}')`, [A, B, C, D]);
 
 let failures = 0;
 const ok = (cond, msg) => { if (cond) console.log('✓', msg); else { failures++; console.log('✗', msg); } };
@@ -57,8 +66,29 @@ async function expectError(user, sql, params, re, msg) {
 }
 const state = async (u) => (await as(u, 'select public.get_state() as s')).rows[0].s;
 
-// profiles from the trigger
+// invite-only sign-ups
+ok((await state(E)).me.status === 'approved', 'accounts from before invite-only stay approved');
 let sA = await state(A);
+ok(sA.me.status === 'pending' && !('pair_code' in sA.me), 'new accounts start pending, with no pair code shown');
+await expectError(A, "select public.add_task('x', '', 1, true)", [], /waiting for approval/, 'pending account cannot use the app');
+await expectError(A, 'select public.update_profile($1, $2)', ['Hacker', '🤖'], /waiting for approval/, 'pending account cannot edit its profile');
+await expectError(A, 'select public.admin_list_users()', [], /waiting for approval/, 'pending account cannot open the admin portal');
+await db.query("update public.profiles set is_admin = true, status = 'approved' where id = $1", [A]); // the one-off SQL step
+await expectError(E, 'select public.admin_list_users()', [], /Only admins/, 'approved non-admin cannot open the admin portal');
+sA = await state(A);
+ok(sA.admin?.pending === 3, `admin sees how many are waiting (${sA.admin?.pending})`);
+ok((await state(E)).admin === null, 'non-admins get no admin info');
+const list = (await as(A, 'select public.admin_list_users() as l')).rows[0].l;
+ok(list.length === 5 && list[0].status === 'pending' && list.some((u) => u.email === 'd@x.test'), 'admin lists accounts with emails, pending first');
+await as(A, 'select public.admin_approve($1)', [B]);
+await as(A, 'select public.admin_approve($1)', [C]);
+ok((await state(B)).me.status === 'approved', 'admin approves a sign-up');
+await expectError(B, 'select public.admin_approve($1)', [D], /Only admins/, 'non-admins cannot approve');
+const codeD = (await db.query('select pair_code from public.profiles where id = $1', [D])).rows[0].pair_code;
+const r0 = await as(A, 'select public.pair_with($1) as r', [codeD]);
+ok(r0.rows[0].r.ok === false && /match anyone/.test(r0.rows[0].r.error), 'cannot pair with a pending account');
+
+// profiles from the trigger
 ok(sA.me.display_name === 'Alex' && sA.me.avatar === '🧁', 'profile created from sign-up metadata');
 ok(/^[A-Z]+-[A-Z2-9]{5}$/.test(sA.me.pair_code), `pair code format ${sA.me.pair_code}`);
 ok((await state(C)).me.display_name === 'c', 'name falls back to email prefix');
@@ -168,6 +198,22 @@ await as(A, 'select public.unpair()');
 for (let i = 0; i < 10; i++) await as(C, 'select public.pair_with($1)', ['BAD-' + i]);
 r = await as(C, 'select public.pair_with($1) as r', [newCodeB]);
 ok(r.rows[0].r.ok === false && /Too many tries/.test(r.rows[0].r.error), 'pairing attempts rate-limited');
+
+// admin removes accounts
+await as(A, 'select public.pair_with($1)', [(await state(B)).me.pair_code]);
+await expectError(A, 'select public.admin_remove_user($1)', [A], /own account/, 'admin cannot remove themselves');
+await as(A, 'select public.admin_remove_user($1)', [B]);
+sA = await state(A);
+ok(sA.partner === null && sA.me.couple_id === null, 'removing someone unpairs their partner');
+const leftovers = await db.query(
+  `select (select count(*) from auth.users where id = $1)::int
+        + (select count(*) from public.tasks where created_by = $1 or assigned_to = $1)::int
+        + (select count(*) from public.rewards where wished_by = $1)::int as n`,
+  [B],
+);
+ok(leftovers.rows[0].n === 0, 'removed account and everything it created are gone');
+await as(A, 'select public.admin_remove_user($1)', [D]);
+ok(!(await as(A, 'select public.admin_list_users() as l')).rows[0].l.some((u) => u.id === D), 'admin rejects a pending sign-up');
 
 console.log(failures ? `\n${failures} FAILED` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

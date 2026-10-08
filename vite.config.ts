@@ -7,4 +7,6 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   server: { port: 5173 },
+  // supabase-js is most of the bundle (~155 kB gzipped in total); that's expected
+  build: { chunkSizeWarningLimit: 700 },
 });

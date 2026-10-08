@@ -5,6 +5,7 @@
 import type {
   Activity,
   ActivityKind,
+  AdminUser,
   AppState,
   Claim,
   Profile,
@@ -25,7 +26,10 @@ interface DemoUser extends Profile {
   email: string;
   password_hash: string;
   pair_code: string;
+  last_sign_in_at?: string;
 }
+// Users saved before invite-only existed have no status: treat them as approved.
+const isApproved = (u: Profile) => (u.status ?? 'approved') === 'approved';
 interface Couple {
   id: UUID;
   member_a: UUID;
@@ -103,10 +107,16 @@ export function createDemoBackend(): Backend {
     },
   };
 
-  function meOf(db: DB): DemoUser {
+  function meOf(db: DB, allowPending = false): DemoUser {
     const id = session.get();
     const me = db.users.find((u) => u.id === id);
     if (!me) throw new Oops('Please sign in again.');
+    if (!allowPending && !isApproved(me)) throw new Oops('Your account is still waiting for approval.');
+    return me;
+  }
+  function adminOf(db: DB): DemoUser {
+    const me = meOf(db);
+    if (!me.is_admin) throw new Oops('Only admins can do that.');
     return me;
   }
   function partnerOf(db: DB, me: DemoUser): DemoUser {
@@ -118,7 +128,7 @@ export function createDemoBackend(): Backend {
   function log(
     db: DB,
     couple: UUID,
-    actor: UUID,
+    actor: UUID | null,
     kind: ActivityKind,
     title: string,
     value: number | null,
@@ -147,7 +157,7 @@ export function createDemoBackend(): Backend {
     return out as T;
   }
 
-  const strip = ({ email: _e, password_hash: _p, ...profile }: DemoUser): Profile => profile;
+  const strip = ({ email: _e, password_hash: _p, last_sign_in_at: _l, ...profile }: DemoUser): Profile => profile;
   const trim = (s: string | null | undefined) => (s ?? '').trim();
 
   const backend: Backend = {
@@ -180,6 +190,10 @@ export function createDemoBackend(): Backend {
         pair_code: pairCode(db),
         couple_id: null,
         created_at: now(),
+        // The very first account in a fresh demo runs the place; everyone after waits.
+        status: db.users.length === 0 ? 'approved' : 'pending',
+        is_admin: db.users.length === 0,
+        last_sign_in_at: now(),
       };
       db.users.push(user);
       save(db);
@@ -191,6 +205,8 @@ export function createDemoBackend(): Backend {
       const db = load();
       const user = db.users.find((u) => u.email === trim(email).toLowerCase());
       if (!user || user.password_hash !== (await hash(password))) throw new Oops('That email and password don’t match.');
+      user.last_sign_in_at = now();
+      save(db);
       session.set(user.id);
     },
 
@@ -204,7 +220,11 @@ export function createDemoBackend(): Backend {
 
     async getState(): Promise<AppState> {
       const db = load();
-      const me = meOf(db);
+      const me = meOf(db, true);
+      if (!isApproved(me)) {
+        const { pair_code: _code, ...waiting } = strip(me);
+        return { me: waiting, partner: null, tasks: [], claims: [], rewards: [], redemptions: [], activity: [], balances: {}, earned: {}, admin: null };
+      }
       const c = me.couple_id;
       const partner = c ? db.users.find((u) => u.couple_id === c && u.id !== me.id) ?? null : null;
       const byNewest = <T extends { created_at: string }>(a: T, b: T) => b.created_at.localeCompare(a.created_at);
@@ -239,6 +259,7 @@ export function createDemoBackend(): Backend {
         activity: db.activity.filter((a) => a.couple_id === c).sort((a, b) => b.id - a.id).slice(0, 200),
         balances,
         earned,
+        admin: me.is_admin ? { pending: db.users.filter((u) => !isApproved(u)).length } : null,
       };
     },
 
@@ -265,7 +286,7 @@ export function createDemoBackend(): Backend {
       mutate((db, me) => {
         const norm = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
         if (me.couple_id) return { ok: false, error: 'You’re already paired up.' };
-        const other = db.users.find((u) => u.pair_code.replace('-', '') === norm);
+        const other = db.users.find((u) => u.pair_code.replace('-', '') === norm && isApproved(u));
         if (!other) return { ok: false, error: 'That code doesn’t match anyone. Double-check it?' };
         if (other.id === me.id) return { ok: false, error: 'That’s your own code! Send it to your partner instead.' };
         if (other.couple_id) return { ok: false, error: 'That person is already paired with someone.' };
@@ -448,6 +469,63 @@ export function createDemoBackend(): Backend {
         log(db, me.couple_id!, me.id, 'gift', '', amount, amount, partner.id, trim(note));
       }),
 
+    async adminListUsers(): Promise<AdminUser[]> {
+      const db = load();
+      adminOf(db);
+      const rows = db.users.map((u) => ({
+        id: u.id,
+        display_name: u.display_name,
+        avatar: u.avatar,
+        status: isApproved(u) ? ('approved' as const) : ('pending' as const),
+        is_admin: !!u.is_admin,
+        email: u.email,
+        created_at: u.created_at,
+        last_sign_in_at: u.last_sign_in_at ?? null,
+        email_confirmed_at: u.created_at,
+        partner_name: u.couple_id ? db.users.find((p) => p.couple_id === u.couple_id && p.id !== u.id)?.display_name ?? null : null,
+      }));
+      return rows.sort((x, y) => Number(y.status === 'pending') - Number(x.status === 'pending') || y.created_at.localeCompare(x.created_at));
+    },
+
+    adminApprove: async (id) => {
+      await mutate((db) => {
+        adminOf(db);
+        const u = db.users.find((x) => x.id === id);
+        if (u && !isApproved(u)) u.status = 'approved';
+      });
+      channel?.postMessage({ couple: null, users: [id] });
+    },
+
+    adminRemove: async (id) => {
+      await mutate((db, me) => {
+        adminOf(db);
+        if (id === me.id) throw new Oops('You can’t remove your own account from here.');
+        const victim = db.users.find((u) => u.id === id);
+        if (!victim) return;
+        if (victim.couple_id) {
+          log(db, victim.couple_id, null, 'unpaired', '', null, null, null);
+          for (const u of db.users)
+            if (u.couple_id === victim.couple_id) {
+              u.couple_id = null;
+              u.pair_code = pairCode(db);
+            }
+        }
+        // the same cascade the database does
+        const theirTasks = new Set(db.tasks.filter((t) => t.created_by === id || t.assigned_to === id).map((t) => t.id));
+        const theirRewards = new Set(db.rewards.filter((r) => r.wished_by === id).map((r) => r.id));
+        db.tasks = db.tasks.filter((t) => !theirTasks.has(t.id));
+        db.claims = db.claims.filter((c) => !theirTasks.has(c.task_id) && c.claimed_by !== id);
+        db.rewards = db.rewards.filter((r) => !theirRewards.has(r.id));
+        db.redemptions = db.redemptions.filter((d) => !theirRewards.has(d.reward_id) && d.redeemed_by !== id);
+        for (const a of db.activity) {
+          if (a.actor_id === id) a.actor_id = null;
+          if (a.beneficiary_id === id) a.beneficiary_id = null;
+        }
+        db.users = db.users.filter((u) => u.id !== id);
+      });
+      channel?.postMessage({ couple: null, users: [id] });
+    },
+
     demo: {
       async seed() {
         const db = load();
@@ -458,8 +536,16 @@ export function createDemoBackend(): Backend {
           id: uid(), email, password_hash: await hash('brownies'), display_name: name, avatar,
           pair_code: pairCode(db), couple_id: null, created_at: at(14),
         });
-        const alex = await mk('Alex', '🧁', `alex+${Date.now()}@demo.brownie`);
-        const sam = await mk('Sam', '🍓', `sam+${Date.now()}@demo.brownie`);
+        const alex = { ...(await mk('Alex', '🧁', 'alex@example.com')), status: 'approved' as const, is_admin: true };
+        const sam = { ...(await mk('Sam', '🍓', 'sam@example.com')), status: 'approved' as const };
+        // two sign-ups waiting in the admin portal
+        for (const [name, avatar, hoursAgo] of [['Morgan', '🦊', 3], ['Jordan', '🐻', 26]] as const) {
+          db.users.push({
+            ...(await mk(name, avatar, `${name.toLowerCase()}@example.com`)),
+            status: 'pending',
+            created_at: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(),
+          });
+        }
         const [a, b] = [alex.id, sam.id].sort();
         const couple: Couple = { id: uid(), member_a: a, member_b: b, created_at: at(14) };
         alex.couple_id = sam.couple_id = couple.id;

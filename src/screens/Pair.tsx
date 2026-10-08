@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Heart, Share2 } from 'lucide-react';
+import { Check, Copy, Heart, Share2, ShieldCheck } from 'lucide-react';
 import { useLoaded } from '../app/store';
 import { BrownieIcon } from '../components/Brownie';
 import { Avatar } from '../components/ui';
@@ -134,6 +134,12 @@ export function Pair() {
       <p className="waiting-note">
         <BrownieIcon size={22} className="bob" /> We’ll connect you automatically when your partner enters your code.
       </p>
+      {me.is_admin && (
+        <button className="btn btn-ghost block" onClick={() => (location.hash = 'admin')}>
+          <ShieldCheck size={16} /> Admin portal
+          {state.admin?.pending ? <span className="badge">{state.admin.pending} waiting</span> : null}
+        </button>
+      )}
       <p className="muted small center">
         Not {me.display_name}?{' '}
         <button className="link inline" onClick={() => backend.signOut()}>
