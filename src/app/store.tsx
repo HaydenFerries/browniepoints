@@ -72,8 +72,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (lastBalance.current != null && bal > lastBalance.current) celebrate();
       lastBalance.current = bal;
       const st = s.me.status ?? 'approved';
-      if (lastStatus.current === 'pending' && st === 'approved') {
-        toast('You’re approved! Welcome to the bakery.', 'success');
+      if (lastStatus.current && lastStatus.current !== 'approved' && st === 'approved') {
+        toast(lastStatus.current === 'pending' ? 'You’re approved! Welcome to the bakery.' : 'Your account is active again. Welcome back!', 'success');
         celebrate();
       }
       lastStatus.current = st;

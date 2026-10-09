@@ -27,9 +27,16 @@ interface DemoUser extends Profile {
   password_hash: string;
   pair_code: string;
   last_sign_in_at?: string;
+  status_changed_at?: string;
 }
 // Users saved before invite-only existed have no status: treat them as approved.
-const isApproved = (u: Profile) => (u.status ?? 'approved') === 'approved';
+const statusOf = (u: Profile) => u.status ?? 'approved';
+const isApproved = (u: Profile) => statusOf(u) === 'approved';
+const BLOCKED_MESSAGE = {
+  pending: 'Your account is still waiting for approval.',
+  suspended: 'Your account is suspended.',
+  rejected: 'Your sign-up wasn’t approved.',
+} as const;
 interface Couple {
   id: UUID;
   member_a: UUID;
@@ -111,7 +118,8 @@ export function createDemoBackend(): Backend {
     const id = session.get();
     const me = db.users.find((u) => u.id === id);
     if (!me) throw new Oops('Please sign in again.');
-    if (!allowPending && !isApproved(me)) throw new Oops('Your account is still waiting for approval.');
+    const st = statusOf(me);
+    if (!allowPending && st !== 'approved') throw new Oops(BLOCKED_MESSAGE[st]);
     return me;
   }
   function adminOf(db: DB): DemoUser {
@@ -239,7 +247,7 @@ export function createDemoBackend(): Backend {
       const meProfile = strip(me);
       let partnerProfile: Profile | null = null;
       if (partner) {
-        const { pair_code: _code, ...rest } = strip(partner);
+        const { pair_code: _code, status_note: _note, ...rest } = strip(partner);
         partnerProfile = rest;
       }
       return {
@@ -259,7 +267,7 @@ export function createDemoBackend(): Backend {
         activity: db.activity.filter((a) => a.couple_id === c).sort((a, b) => b.id - a.id).slice(0, 200),
         balances,
         earned,
-        admin: me.is_admin ? { pending: db.users.filter((u) => !isApproved(u)).length } : null,
+        admin: me.is_admin ? { pending: db.users.filter((u) => statusOf(u) === 'pending').length } : null,
       };
     },
 
@@ -476,7 +484,9 @@ export function createDemoBackend(): Backend {
         id: u.id,
         display_name: u.display_name,
         avatar: u.avatar,
-        status: isApproved(u) ? ('approved' as const) : ('pending' as const),
+        status: statusOf(u),
+        status_note: u.status_note ?? '',
+        status_changed_at: u.status_changed_at ?? null,
         is_admin: !!u.is_admin,
         email: u.email,
         created_at: u.created_at,
@@ -484,14 +494,19 @@ export function createDemoBackend(): Backend {
         email_confirmed_at: u.created_at,
         partner_name: u.couple_id ? db.users.find((p) => p.couple_id === u.couple_id && p.id !== u.id)?.display_name ?? null : null,
       }));
-      return rows.sort((x, y) => Number(y.status === 'pending') - Number(x.status === 'pending') || y.created_at.localeCompare(x.created_at));
+      const rank = { pending: 0, approved: 1, suspended: 2, rejected: 2 };
+      return rows.sort((x, y) => rank[x.status] - rank[y.status] || y.created_at.localeCompare(x.created_at));
     },
 
-    adminApprove: async (id) => {
-      await mutate((db) => {
+    adminSetStatus: async (id, status, note) => {
+      await mutate((db, me) => {
         adminOf(db);
+        if (id === me.id) throw new Oops('You can’t change your own account status.');
         const u = db.users.find((x) => x.id === id);
-        if (u && !isApproved(u)) u.status = 'approved';
+        if (!u) throw new Oops('That account doesn’t exist any more.');
+        u.status = status;
+        u.status_note = status === 'approved' ? '' : trim(note).slice(0, 300);
+        u.status_changed_at = now();
       });
       channel?.postMessage({ couple: null, users: [id] });
     },

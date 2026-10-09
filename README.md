@@ -27,8 +27,14 @@ You can also **Treat** your partner with a few spontaneous brownies and a note.
 
 New accounts start as **pending** and only see an "Account waiting for approval" screen.
 The database itself refuses every action from a pending account, so it can't pair, see
-anyone or create anything. Admins approve or reject sign-ups from the **Admin portal** in
-the app (Profile → Admin portal). Rejecting deletes the account.
+anyone or create anything. Admins manage accounts from the **Admin portal** in the app
+(Profile → Admin portal):
+
+- **Approve** or **reject** sign-ups. Rejected people can still sign in, but they see that
+  their sign-up wasn't approved (plus an optional message from you).
+- **Suspend** members. They see a "your account is suspended" screen and can't use or
+  read anything; their data and pairing are kept. **Restore** them any time.
+- **Delete** an account and everything it created.
 
 Sign-up, sign-in and password reset are also protected by a
 [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) captcha.

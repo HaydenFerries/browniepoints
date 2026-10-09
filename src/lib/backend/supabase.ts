@@ -121,7 +121,7 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     giftBrownies: (amount, note) => rpc('gift_brownies', { p_amount: amount, p_note: note }),
 
     adminListUsers: () => rpc<AdminUser[]>('admin_list_users'),
-    adminApprove: (id) => rpc('admin_approve', { p_user: id }),
+    adminSetStatus: (id, status, note) => rpc('admin_set_status', { p_user: id, p_status: status, p_note: note }),
     adminRemove: (id) => rpc('admin_remove_user', { p_user: id }),
   };
 }

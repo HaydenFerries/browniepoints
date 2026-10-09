@@ -40,6 +40,16 @@ export function Home({ go }: { go: (t: Tab) => void }) {
         <JarCard name={p} emoji={partner.avatar} balance={d.partnerBalance} earned={d.partnerEarned} accent="berry" onClick={() => go('history')} />
       </section>
 
+      {partner.status === 'suspended' && (
+        <section className="card partner-note" role="status">
+          <Avatar emoji={partner.avatar} tone="berry" size={36} />
+          <span>
+            <strong>{p}’s account is suspended.</strong> They can’t use Brownie Points until an admin restores it. Everything
+            is kept.
+          </span>
+        </section>
+      )}
+
       {!introHidden && (
         <section className="card intro">
           <button className="icon-btn intro-close" onClick={hideIntro} aria-label="Hide how it works">

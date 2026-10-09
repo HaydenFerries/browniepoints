@@ -199,8 +199,31 @@ for (let i = 0; i < 10; i++) await as(C, 'select public.pair_with($1)', ['BAD-' 
 r = await as(C, 'select public.pair_with($1) as r', [newCodeB]);
 ok(r.rows[0].r.ok === false && /Too many tries/.test(r.rows[0].r.error), 'pairing attempts rate-limited');
 
-// admin removes accounts
+// suspend / reject / restore
 await as(A, 'select public.pair_with($1)', [(await state(B)).me.pair_code]);
+await as(A, `select public.add_task('Water the plants', '', 5, true)`);
+await as(A, 'select public.admin_set_status($1, $2, $3)', [B, 'suspended', 'Taking a break']);
+let sB2 = await state(B);
+ok(sB2.me.status === 'suspended' && sB2.me.status_note === 'Taking a break', 'suspended member sees their status and the note');
+ok(sB2.partner === null && sB2.tasks.length === 0, 'suspended member gets no couple data');
+const direct = await as(B, 'select count(*)::int as n from public.tasks');
+ok(direct.rows[0].n === 0, 'suspended member cannot read couple tables directly (RLS)');
+await expectError(B, "select public.add_task('x', '', 1, true)", [], /suspended/, 'suspended member cannot act');
+sA = await state(A);
+ok(sA.partner?.status === 'suspended' && !('status_note' in sA.partner), 'partner sees the suspension but not the note');
+await as(A, 'select public.admin_set_status($1, $2, $3)', [B, 'approved', '']);
+sB2 = await state(B);
+ok(sB2.me.status === 'approved' && sB2.me.status_note === '' && sB2.tasks.length > 0 && sB2.partner?.id === A, 'restoring brings everything back');
+await expectError(B, 'select public.admin_set_status($1, $2, $3)', [C, 'suspended', ''], /Only admins/, 'non-admins cannot suspend');
+await expectError(A, 'select public.admin_set_status($1, $2, $3)', [A, 'suspended', ''], /own account status/, 'admin cannot change own status');
+await expectError(A, 'select public.admin_set_status($1, $2, $3)', [C, 'banana', ''], /Unknown status/, 'unknown status rejected');
+await as(A, 'select public.admin_set_status($1, $2, $3)', [D, 'rejected', 'Sorry, friends only']);
+const sD = await state(D);
+ok(sD.me.status === 'rejected' && sD.me.status_note === 'Sorry, friends only', 'rejected sign-up sees why');
+await expectError(D, "select public.add_task('x', '', 1, true)", [], /wasn.t approved/, 'rejected account cannot act');
+ok((await state(A)).admin.pending === 0, 'rejected sign-ups no longer count as waiting');
+
+// admin removes accounts
 await expectError(A, 'select public.admin_remove_user($1)', [A], /own account/, 'admin cannot remove themselves');
 await as(A, 'select public.admin_remove_user($1)', [B]);
 sA = await state(A);
@@ -213,7 +236,7 @@ const leftovers = await db.query(
 );
 ok(leftovers.rows[0].n === 0, 'removed account and everything it created are gone');
 await as(A, 'select public.admin_remove_user($1)', [D]);
-ok(!(await as(A, 'select public.admin_list_users() as l')).rows[0].l.some((u) => u.id === D), 'admin rejects a pending sign-up');
+ok(!(await as(A, 'select public.admin_list_users() as l')).rows[0].l.some((u) => u.id === D), 'admin deletes a rejected sign-up');
 
 console.log(failures ? `\n${failures} FAILED` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

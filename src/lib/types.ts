@@ -3,6 +3,8 @@
 
 export type UUID = string;
 
+export type AccountStatus = 'pending' | 'approved' | 'suspended' | 'rejected';
+
 export interface Profile {
   id: UUID;
   display_name: string;
@@ -11,7 +13,9 @@ export interface Profile {
   couple_id: UUID | null;
   created_at: string;
   /** Invite-only: new accounts wait for an admin. Missing on older databases → approved. */
-  status?: 'pending' | 'approved';
+  status?: AccountStatus;
+  /** The admin's note to this person when rejected or suspended (own profile only). */
+  status_note?: string;
   is_admin?: boolean;
 }
 
@@ -118,7 +122,9 @@ export interface AdminUser {
   id: UUID;
   display_name: string;
   avatar: string;
-  status: 'pending' | 'approved';
+  status: AccountStatus;
+  status_note: string;
+  status_changed_at: string | null;
   is_admin: boolean;
   email: string | null;
   created_at: string;

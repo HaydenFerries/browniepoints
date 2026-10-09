@@ -1,4 +1,4 @@
-import type { Activity, AdminUser, AppState, Profile, RewardInput, TaskInput, UUID } from '../types';
+import type { AccountStatus, Activity, AdminUser, AppState, Profile, RewardInput, TaskInput, UUID } from '../types';
 
 export type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'PASSWORD_RECOVERY' | 'OTHER';
 
@@ -51,7 +51,8 @@ export interface Backend {
 
   // Admin portal (admins only; the database enforces it)
   adminListUsers(): Promise<AdminUser[]>;
-  adminApprove(id: UUID): Promise<void>;
+  /** Approve, reject, suspend or restore; the note is shown to the person. */
+  adminSetStatus(id: UUID, status: Exclude<AccountStatus, 'pending'>, note: string): Promise<void>;
   adminRemove(id: UUID): Promise<void>;
 
   /** Demo-only helpers (undefined on the real backend). */

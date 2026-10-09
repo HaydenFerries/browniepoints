@@ -1898,6 +1898,35 @@ textarea::placeholder {
   gap: 12px;
   margin: 6px 0;
 }
+.status-rejected .status-pill,
+.status-suspended .status-pill {
+  background: rgba(227, 100, 123, 0.16);
+  color: var(--berry-hi);
+}
+.status-rejected .kicker,
+.status-suspended .kicker {
+  color: var(--berry-hi);
+}
+.status-note {
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(255, 228, 196, 0.06);
+  border: 1px solid var(--line);
+}
+.member-list li.is-blocked .member-main {
+  opacity: 0.75;
+}
+.partner-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-color: rgba(227, 100, 123, 0.35);
+  color: var(--cream-dim);
+  font-size: 14.5px;
+}
+.partner-note strong {
+  color: var(--berry-hi);
+}
 .status-pill {
   display: inline-flex;
   align-items: center;
