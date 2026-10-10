@@ -136,8 +136,8 @@ function MyWishCard({ reward }: { reward: Reward }) {
       <div className="wc-main">
         <div className="wc-title-row">
           <h3>{reward.title}</h3>
-          <button className="icon-btn sm" onClick={() => sheets.open({ kind: 'wish', reward })} aria-label={`Edit ${reward.title}`}>
-            <Pencil size={15} />
+          <button className="icon-btn" onClick={() => sheets.open({ kind: 'wish', reward })} aria-label={`Edit ${reward.title}`}>
+            <Pencil size={17} />
           </button>
         </div>
         {reward.details && <p className="wc-details">{reward.details}</p>}

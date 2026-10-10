@@ -192,6 +192,20 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
         </div>
       ) : null}
 
+      <div className="tc-tags">
+        {task.shared && (
+          <span className="tag">
+            <Users size={12} /> Either of us
+          </span>
+        )}
+        <RepeatTag repeatable={task.repeatable} />
+        {!active && (
+          <span className="tag">
+            <Moon size={12} /> Resting
+          </span>
+        )}
+      </div>
+
       {claimedByPartner ? (
         <div className="review-bar">
           <span>
@@ -214,64 +228,51 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
         </div>
       ) : (
         <div className="tc-bottom">
-          <div className="tc-tags">
-            {task.shared && (
-              <span className="tag">
-                <Users size={12} /> Either of us
-              </span>
-            )}
-            <RepeatTag repeatable={task.repeatable} />
-            {!active && (
-              <span className="tag">
-                <Moon size={12} /> Resting
-              </span>
-            )}
-          </div>
-          <div className="tc-actions">
+          <div className="tc-tools">
             {manage && active && task.decay_hours ? (
               <AsyncButton
-                className="icon-btn sm warm"
+                className="tool-btn warm"
                 disabled={fresh >= 0.999}
                 onClick={() => act((b) => b.bumpTask(task.id), { success: 'Warmed up: full price again' })}
                 aria-label="Warm it up (full price again)"
                 title="Warm it up"
               >
-                <Flame size={15} />
+                <Flame size={19} />
               </AsyncButton>
             ) : null}
             {manage && (
               <AsyncButton
-                className="icon-btn sm"
+                className="tool-btn"
                 onClick={() => act((b) => b.setTaskActive(task.id, !active), { success: active ? 'Resting until it’s needed' : 'Back on the menu' })}
                 aria-label={active ? 'Pause this task' : 'Bring this task back'}
                 title={active ? 'Pause' : 'Bring back'}
               >
-                {active ? <Pause size={15} /> : <Play size={15} />}
+                {active ? <Pause size={19} /> : <Play size={19} />}
               </AsyncButton>
             )}
             {(iSetIt || task.shared) && (
-              <button className="icon-btn sm" onClick={() => sheets.open({ kind: 'task', task })} aria-label="Edit" title="Edit">
-                <Pencil size={14} />
+              <button className="tool-btn" onClick={() => sheets.open({ kind: 'task', task })} aria-label="Edit" title="Edit">
+                <Pencil size={18} />
               </button>
             )}
-            {iDoIt &&
-              active &&
-              (claimedByMe ? (
-                <span className="tc-status">
-                  <span className="pulse-dot" /> Waiting for {p}
-                  <AsyncButton className="link" onClick={() => act((b) => b.withdrawClaim(claim!.id))}>
-                    Undo
-                  </AsyncButton>
-                </span>
-              ) : (
-                <AsyncButton
-                  className="btn btn-caramel sm"
-                  onClick={() => act((b) => b.claimTask(task.id, ''), { success: `Sent to ${p} for approval` })}
-                >
-                  <Check size={16} /> I did it!
-                </AsyncButton>
-              ))}
           </div>
+          {iDoIt &&
+            active &&
+            (claimedByMe ? (
+              <span className="tc-status">
+                <span className="pulse-dot" /> Waiting for {p}
+                <AsyncButton className="link" onClick={() => act((b) => b.withdrawClaim(claim!.id))}>
+                  Undo
+                </AsyncButton>
+              </span>
+            ) : (
+              <AsyncButton
+                className="btn btn-caramel tc-main"
+                onClick={() => act((b) => b.claimTask(task.id, ''), { success: `Sent to ${p} for approval` })}
+              >
+                <Check size={17} /> I did it!
+              </AsyncButton>
+            ))}
         </div>
       )}
     </article>

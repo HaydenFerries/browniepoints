@@ -2411,3 +2411,74 @@ textarea::placeholder {
   color: var(--caramel-hi);
   white-space: nowrap;
 }
+
+/* --------------------------------------------------------------------------
+   Thumb-friendly actions: secondary tools on the left, the main action alone
+   on the right, with real space between them.
+   -------------------------------------------------------------------------- */
+.task-card .tc-tags {
+  margin-top: 12px;
+}
+.task-card .tc-bottom {
+  flex-wrap: nowrap;
+  align-items: center;
+  margin-top: 12px;
+  gap: 16px;
+}
+.tc-tools {
+  display: flex;
+  gap: 8px;
+}
+.tool-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(255, 226, 190, 0.22);
+  background: rgba(255, 228, 196, 0.08);
+  color: var(--cream);
+  transition:
+    background 0.15s,
+    transform 0.12s;
+}
+.tool-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  background: rgba(255, 228, 196, 0.16);
+}
+.tool-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.tool-btn.warm {
+  color: #ffb067;
+  border-color: rgba(255, 140, 60, 0.45);
+  background: rgba(255, 140, 60, 0.12);
+}
+.task-card .tc-main,
+.task-card .tc-status {
+  margin-left: auto;
+}
+.task-card .tc-main {
+  min-height: 44px;
+  padding: 0 18px;
+}
+/* paired buttons (Not yet / Approve, Reject / Approve…): apart, not touching */
+.ac-actions,
+.review-actions {
+  justify-content: flex-start;
+  gap: 12px;
+}
+.ac-actions > :last-child,
+.review-actions > :last-child {
+  margin-left: auto;
+}
+.ac-actions .btn,
+.review-actions .btn {
+  min-height: 42px;
+}
+.icon-btn {
+  width: 42px;
+  height: 42px;
+}

@@ -193,8 +193,8 @@ function UserList({
                 </span>
               </div>
               {u.id !== meId && (
-                <button className="icon-btn sm" onClick={() => onManage(u)} aria-label={`Manage ${u.display_name}`}>
-                  <MoreHorizontal size={16} />
+                <button className="icon-btn" onClick={() => onManage(u)} aria-label={`Manage ${u.display_name}`}>
+                  <MoreHorizontal size={19} />
                 </button>
               )}
             </li>

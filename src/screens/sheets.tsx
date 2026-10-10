@@ -353,6 +353,7 @@ function ProposalSheet({ task, onClose }: { task: Task; onClose: () => void }) {
   const [partnerPoints, setPartnerPoints] = useState(proposedTheirs);
   const [busy, setBusy] = useState(false);
   const changed = myPoints !== proposedMine || partnerPoints !== proposedTheirs;
+  const [confirmDecline, setConfirmDecline] = useState(false);
 
   const run = async (fn: (b: Backend) => Promise<unknown>, success: string, celebrate = false) => {
     setBusy(true);
@@ -369,9 +370,15 @@ function ProposalSheet({ task, onClose }: { task: Task; onClose: () => void }) {
       subtitle={`${partner} wants to share this one. Either of you can do it and earn your own price.`}
       footer={
         <>
-          <button className="btn btn-ghost danger-text" disabled={busy} onClick={() => run((b) => b.respondShared(task.id, false), 'Turned down')}>
-            Decline
-          </button>
+          {confirmDecline ? (
+            <button className="btn btn-danger" disabled={busy} onClick={() => run((b) => b.respondShared(task.id, false), 'Turned down')}>
+              Really decline?
+            </button>
+          ) : (
+            <button className="btn btn-ghost danger-text" disabled={busy} onClick={() => setConfirmDecline(true)}>
+              Decline
+            </button>
+          )}
           {changed ? (
             <button
               className="btn btn-caramel grow"
