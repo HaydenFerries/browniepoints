@@ -10,21 +10,32 @@ export function basePrice(t: Task, who: UUID): number {
 /** 1 = fresh out of the oven, 0 = fully stale. Untimed tasks are always 1. */
 export function freshness(t: Task, now = Date.now()): number {
   if (!t.decay_hours) return 1;
-  const hours = (now - Date.parse(t.bumped_at ?? t.created_at)) / 3_600_000;
-  return Math.max(0, 1 - hours / t.decay_hours);
+  const grace = t.decay_grace_hours ?? 0;
+  const hours = (now - Date.parse(t.bumped_at ?? t.created_at)) / 3_600_000 - grace;
+  return Math.max(0, Math.min(1, 1 - hours / (t.decay_hours - grace)));
+}
+
+/** The stale price this person has set, if it was given as a brownie amount. */
+export function rawStale(t: Task, who: UUID): number | null {
+  return (t.shared && who !== t.created_by ? t.stale_points_other : t.stale_points) ?? null;
+}
+
+/** The price a timed task bottoms out at for this person. */
+export function staleValue(t: Task, who: UUID): number {
+  return rawStale(t, who) ?? (basePrice(t, who) * (t.decay_floor_pct ?? 25)) / 100;
 }
 
 /** What the task is worth to this person right now. */
 export function taskValue(t: Task, who: UUID, now = Date.now()): number {
   const base = basePrice(t, who);
   if (!t.decay_hours) return base;
-  const floor = (t.decay_floor_pct ?? 25) / 100;
-  return Math.max(1, Math.round(base * (floor + (1 - floor) * freshness(t, now))));
+  const stale = staleValue(t, who);
+  return Math.max(1, Math.round(stale + (base - stale) * freshness(t, now)));
 }
 
 /** The lowest a timed task can drop to for this person. */
 export function floorValue(t: Task, who: UUID): number {
-  return Math.max(1, Math.round(basePrice(t, who) * ((t.decay_floor_pct ?? 25) / 100)));
+  return Math.max(1, Math.round(staleValue(t, who)));
 }
 
 /** Who may warm up / pause / remove: the setter, or either of you for shared tasks. */
@@ -32,9 +43,16 @@ export const canManage = (t: Task, who: UUID) => !!t.shared || t.created_by === 
 
 export const isActive = (t: Task) => t.active !== false;
 
+/** Hours until a timed task starts cooling (0 once it has). */
+export function graceLeft(t: Task, now = Date.now()): number {
+  if (!t.decay_hours || !t.decay_grace_hours) return 0;
+  const hours = (now - Date.parse(t.bumped_at ?? t.created_at)) / 3_600_000;
+  return Math.max(0, t.decay_grace_hours - hours);
+}
+
 /** Hours → "1 day", "3 days", "1 week"… */
 export function durationLabel(hours: number): string {
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  if (hours < 24 || (hours < 72 && hours % 24 !== 0)) return `${hours} hour${hours === 1 ? '' : 's'}`;
   const days = Math.round(hours / 24);
   if (days % 7 === 0) return `${days / 7} week${days === 7 ? '' : 's'}`;
   return `${days} day${days === 1 ? '' : 's'}`;

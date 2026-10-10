@@ -102,7 +102,7 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     unpair: () => rpc('unpair'),
     newPairCode: () => rpc<string>('new_pair_code'),
 
-    createTask: (t: TaskInput) => rpc('create_task', { p_shared: t.shared, ...taskArgs(t) }),
+    createTask: (t: TaskInput) => rpc('create_task', { p_shared: t.shared, p_active: t.startActive ?? true, ...taskArgs(t) }),
     editTask: (id: UUID, t: TaskInput) => rpc('edit_task', { p_task_id: id, ...taskArgs(t) }),
     respondShared: (id, accept) => rpc('respond_shared_task', { p_task_id: id, p_accept: accept }),
     setTaskActive: (id, active) => rpc('set_task_active', { p_task_id: id, p_active: active }),
@@ -137,6 +137,9 @@ function taskArgs(t: TaskInput) {
     p_repeatable: t.repeatable,
     p_decay_hours: t.decayHours,
     p_decay_floor: t.decayFloor,
+    p_decay_grace: t.decayHours ? t.decayGrace : 0,
+    p_stale_partner: t.decayHours ? t.stalePartner : null,
+    p_stale_mine: t.decayHours && t.shared ? t.staleMine : null,
   };
 }
 

@@ -4,7 +4,7 @@ import { useLoaded } from '../app/store';
 import { Amount } from '../components/Brownie';
 import type { Claim, Redemption, Reward, Task } from '../lib/types';
 import { timeAgo } from '../lib/util';
-import { basePrice, canManage, durationLabel, floorValue, freshness, isActive, taskValue } from '../lib/tasks';
+import { basePrice, canManage, durationLabel, floorValue, freshness, graceLeft, isActive, taskValue } from '../lib/tasks';
 import { useNow } from '../app/useNow';
 import { useSheets } from './sheets';
 import { AsyncButton } from '../components/ui';
@@ -185,7 +185,7 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
             <div className="fresh-fill" style={{ width: `${Math.round(fresh * 100)}%` }} />
           </div>
           <span>
-            {freshLabel(fresh)}
+            {graceLeft(task, now) > 0 ? `Fresh · cools in ${durationLabel(Math.ceil(graceLeft(task, now)))}` : freshLabel(fresh)}
             {(iSetIt ? partnerValue : myValue) < basePrice(task, iSetIt ? partnerId : me) && ` · was ${basePrice(task, iSetIt ? partnerId : me)}`}
             {fresh > 0 && ` · bottoms out at ${floorValue(task, iSetIt ? partnerId : me)}`}
           </span>
@@ -239,7 +239,7 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
                 <Flame size={15} />
               </AsyncButton>
             ) : null}
-            {manage && task.repeatable && (
+            {manage && (
               <AsyncButton
                 className="icon-btn sm"
                 onClick={() => act((b) => b.setTaskActive(task.id, !active), { success: active ? 'Resting until it’s needed' : 'Back on the menu' })}
@@ -298,6 +298,7 @@ export function ProposalCard({ task }: { task: Task }) {
         <h3>{task.title}</h3>
         <p className="meta">
           You’d earn <Amount n={basePrice(task, d.myId)} size="sm" /> · {p} <Amount n={basePrice(task, partnerId)} size="sm" />
+          {task.active === false && ' · starts resting'}
         </p>
       </div>
       <div className="ac-actions">

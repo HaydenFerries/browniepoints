@@ -257,6 +257,12 @@ const claimNow = async () => {
   return c.points;
 };
 ok((await claimNow()) === 40, 'fresh timed task is worth full price');
+async function claimOf(id) {
+  await as(B, 'select public.claim_task($1, $2)', [id, '']);
+  const c = (await state(B)).claims.find((x) => x.task_id === id && x.status === 'pending');
+  await as(B, 'select public.withdraw_claim($1)', [c.id]);
+  return c.points;
+}
 await db.query("update public.tasks set bumped_at = now() - interval '5 hours' where id = $1", [timed]);
 ok((await claimNow()) === 25, 'half-way stale: 25% + 75% × 0.5 of 40 = 25');
 await db.query("update public.tasks set bumped_at = now() - interval '30 hours' where id = $1", [timed]);
@@ -270,6 +276,42 @@ cl = (await state(A)).claims.find((c) => c.task_id === timed && c.status === 'pe
 await as(A, 'select public.review_claim($1, true, $2)', [cl.id, '']);
 ok((await claimNow()) === 40, 'completing a repeatable timed task makes it fresh again');
 
+// grace period: full price for 4h, then slides to 25% by 12h (40 brownies)
+const graced = (await as(A, "select public.create_task('Hang the washing', '', false, 40, null, true, 12, 25, true, 4) as id")).rows[0].id;
+const at = async (hours) => {
+  await db.query(`update public.tasks set bumped_at = now() - interval '${hours} hours' where id = $1`, [graced]);
+  return claimOf(graced);
+};
+ok((await at(3)) === 40, 'still full price inside the grace period');
+ok((await at(8)) === 25, 'half-way through cooling: 25% + 75% × 0.5 of 40 = 25');
+ok((await at(20)) === 10, 'past stale: the floor (10)');
+await expectError(A, "select public.create_task('Bad', '', false, 10, null, true, 12, 25, true, 12)", [], /start cooling before/, 'grace must end before it goes stale');
+await as(A, "select public.edit_task($1, 'Hang the washing', '', 40, null, true, 24, 25, 6)", [graced]);
+st = (await state(A)).tasks.find((t) => t.id === graced);
+ok(st.decay_grace_hours === 6 && st.decay_hours === 24, 'editing updates the grace period');
+await as(A, "select public.edit_task($1, 'Hang the washing', '', 40, null, true, null, 25, 6)", [graced]);
+ok((await state(A)).tasks.find((t) => t.id === graced).decay_grace_hours === 0, 'untimed tasks drop the grace period');
+// stale price as a brownie amount: 40 full, 13 stale, cooling over 10h
+const staled = (await as(A, "select public.create_task('Iron shirts', '', false, 40, null, true, 10, 25, true, 0, 13, null) as id")).rows[0].id;
+const staleAt = async (hours) => {
+  await db.query(`update public.tasks set bumped_at = now() - interval '${hours} hours' where id = $1`, [staled]);
+  return claimOf(staled);
+};
+ok((await staleAt(0)) === 40 && (await staleAt(30)) === 13, 'stale price is an exact brownie amount (40 → 13)');
+ok((await staleAt(6)) === 24, '60% of the way: 13 + (40 − 13) × 0.4 ≈ 24');
+await expectError(A, "select public.create_task('Bad', '', false, 10, null, true, 10, 25, true, 0, 10, null)", [], /lower than the full price/, 'stale price must be below the full price');
+await expectError(A, "select public.create_task('Bad', '', false, 10, null, true, 10, 25, true, 0, 0, null)", [], /at least 1/, 'stale price must be at least 1');
+const staledShared = (await as(A, "select public.create_task('Scrub the oven', '', true, 30, 50, true, 10, 25, true, 0, 6, 20) as id")).rows[0].id;
+st = (await state(B)).tasks.find((t) => t.id === staledShared);
+ok(st.stale_points === 20 && st.stale_points_other === 6, 'shared task keeps a stale price for each person');
+await as(B, "select public.edit_task($1, 'Scrub the oven', '', 50, 30, true, 10, 25, 0, 20, 8)", [staledShared]); // B: mine 30/8, A 50/20
+st = (await state(A)).tasks.find((t) => t.id === staledShared);
+ok(st.stale_points === 20 && st.stale_points_other === 8 && st.points_other === 30, 'counter-offer maps stale prices to the right person');
+await as(A, "select public.update_task($1, 'Iron shirts', '', 40, true)", [staled]);
+ok((await state(A)).tasks.find((t) => t.id === staled).stale_points === 13, 'the old editor keeps the stale price');
+await as(A, "select public.update_task($1, 'Old editor', '', 30, true)", [timed]);
+ok((await state(A)).tasks.find((t) => t.id === timed).decay_hours === 10, 'the old editor keeps timing intact');
+
 // pausing
 await as(A, 'select public.set_task_active($1, false)', [timed]);
 await expectError(B, 'select public.claim_task($1, $2)', [timed, ''], /resting/, 'paused task cannot be claimed');
@@ -278,6 +320,18 @@ await as(A, 'select public.set_task_active($1, true)', [timed]);
 ok((await state(B)).tasks.find((t) => t.id === timed).active === true, 'resumed task is live again');
 await as(B, 'select public.set_task_active($1, false)', [tid]);
 ok((await state(A)).tasks.find((t) => t.id === tid).active === false, 'either partner can pause a shared task');
+
+// pre-made tasks that start resting
+const premade = (await as(A, "select public.create_task('Rake the leaves', '', false, 15, null, false, 72, 25, false) as id")).rows[0].id;
+ok((await state(B)).tasks.find((t) => t.id === premade).active === false, 'a task can be created already resting');
+await expectError(B, 'select public.claim_task($1, $2)', [premade, ''], /resting/, 'a pre-made resting task cannot be claimed');
+await as(A, 'select public.set_task_active($1, true)', [premade]);
+ok((await claimOf(premade)) === 15, 'switching it on makes it live (and fresh)');
+const premadeShared = (await as(B, "select public.create_task('Defrost the freezer', '', true, 20, 20, false, null, null, false) as id")).rows[0].id;
+await as(A, 'select public.respond_shared_task($1, true)', [premadeShared]);
+st = (await state(A)).tasks.find((t) => t.id === premadeShared);
+ok(st.awaiting === null && st.active === false, 'an agreed shared task created resting stays resting');
+ok((await as(A, "select public.create_task('Old-style call', '', false, 5, null, true, null, null) as id")).rows[0].id, 'calls without the new argument still work');
 
 // personal ordering
 await as(B, 'select public.set_task_order($1::uuid[])', [[timed, tid]]);

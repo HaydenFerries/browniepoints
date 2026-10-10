@@ -335,13 +335,16 @@ export function createDemoBackend(): Backend {
         const base = {
           id: uid(), couple_id: me.couple_id!, created_by: me.id, title: trim(t.title), details: trim(t.details),
           repeatable: t.repeatable, status: 'open' as const, created_at: now(), updated_at: now(),
-          active: true, decay_hours: t.decayHours, decay_floor_pct: t.decayFloor, bumped_at: now(),
+          active: t.startActive ?? true, decay_hours: t.decayHours, decay_floor_pct: t.decayFloor, bumped_at: now(),
+          decay_grace_hours: t.decayHours ? t.decayGrace : 0,
         };
+        const stalePart = t.decayHours ? t.stalePartner : null;
+        const staleMine = t.decayHours && t.shared ? t.staleMine : null;
         if (t.shared) {
-          db.tasks.push({ ...base, shared: true, assigned_to: null, points: t.myPoints!, points_other: t.partnerPoints, awaiting: partner.id });
+          db.tasks.push({ ...base, shared: true, assigned_to: null, points: t.myPoints!, points_other: t.partnerPoints, awaiting: partner.id, stale_points: staleMine, stale_points_other: stalePart });
           log(db, me.couple_id!, me.id, 'shared_proposed', trim(t.title), t.partnerPoints, null, partner.id);
         } else {
-          db.tasks.push({ ...base, shared: false, assigned_to: partner.id, points: t.partnerPoints, points_other: null, awaiting: null });
+          db.tasks.push({ ...base, shared: false, assigned_to: partner.id, points: t.partnerPoints, points_other: null, awaiting: null, stale_points: stalePart, stale_points_other: null });
           log(db, me.couple_id!, me.id, 'task_added', trim(t.title), t.partnerPoints, null, partner.id);
         }
       }),
@@ -355,18 +358,21 @@ export function createDemoBackend(): Backend {
         const common = {
           title: trim(t.title), details: trim(t.details), repeatable: t.repeatable,
           decay_hours: t.decayHours, decay_floor_pct: t.decayFloor, updated_at: now(),
+          decay_grace_hours: t.decayHours ? t.decayGrace : 0,
         };
         if (task.shared) {
           const mine = me.id === task.created_by;
           Object.assign(task, common, {
             points: mine ? t.myPoints! : t.partnerPoints,
             points_other: mine ? t.partnerPoints : t.myPoints!,
+            stale_points: t.decayHours ? (mine ? t.staleMine : t.stalePartner) : null,
+            stale_points_other: t.decayHours ? (mine ? t.stalePartner : t.staleMine) : null,
             awaiting: partner.id,
           });
           log(db, me.couple_id!, me.id, 'shared_changed', task.title, t.partnerPoints, null, partner.id);
         } else {
           if (task.created_by !== me.id) throw new Oops('Only the person who set a task can change it.');
-          Object.assign(task, common, { points: t.partnerPoints });
+          Object.assign(task, common, { points: t.partnerPoints, stale_points: t.decayHours ? t.stalePartner : null });
           log(db, me.couple_id!, me.id, 'task_updated', task.title, t.partnerPoints, null, task.assigned_to);
         }
       }),
@@ -747,6 +753,10 @@ function validateTask(t: TaskInput) {
   const prices = t.shared ? [t.partnerPoints, t.myPoints ?? 0] : [t.partnerPoints];
   if (prices.some((p) => !Number.isInteger(p) || p < 1 || p > 1000)) throw new Oops('Tasks can be worth 1 to 1,000 brownies.');
   if (t.decayHours != null && (t.decayHours < 1 || t.decayHours > 2160)) throw new Oops('Tasks can take up to 90 days to go stale.');
+  if (t.decayHours != null && (t.decayGrace < 0 || t.decayGrace >= t.decayHours)) throw new Oops('It has to start cooling before it goes stale.');
+  const staleOk = (s: number | null, p: number) => s == null || (s >= 1 && s < p);
+  if (t.decayHours != null && (!staleOk(t.stalePartner, t.partnerPoints) || (t.shared && !staleOk(t.staleMine, t.myPoints ?? 0))))
+    throw new Oops('The stale price has to be at least 1 and lower than the full price.');
 }
 function validateReward(r: RewardInput) {
   const title = r.title.trim();

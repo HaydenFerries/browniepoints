@@ -48,6 +48,11 @@ export interface Task {
   decay_floor_pct?: number;
   /** Timed: when it was last fresh. */
   bumped_at?: string;
+  /** Timed: hours it stays at full price before it starts cooling. */
+  decay_grace_hours?: number;
+  /** Timed: stale price (brownies) for the creator / the other person. */
+  stale_points?: number | null;
+  stale_points_other?: number | null;
 }
 
 export interface Claim {
@@ -171,6 +176,13 @@ export interface TaskInput {
   decayHours: number | null;
   /** Lowest value, as a % of the price. */
   decayFloor: number;
+  /** Hours it stays at full price before cooling starts. */
+  decayGrace: number;
+  /** Stale price (brownies) for your partner, and for you on shared tasks. */
+  stalePartner: number | null;
+  staleMine: number | null;
+  /** New tasks only: false = start resting, switch it on later. */
+  startActive?: boolean;
 }
 
 export interface RewardInput {

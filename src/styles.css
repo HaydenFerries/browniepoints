@@ -2205,3 +2205,166 @@ textarea::placeholder {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* points picker: empty while typing */
+.pp-value.is-invalid {
+  border-color: rgba(227, 100, 123, 0.6);
+  box-shadow: 0 0 0 3px rgba(227, 100, 123, 0.15);
+}
+.pp-error {
+  margin-top: -4px;
+  color: var(--berry-hi);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   "Best when fresh": stale prices + draggable decay graph
+   -------------------------------------------------------------------------- */
+.stale-prices {
+  display: grid;
+  gap: 12px;
+}
+.points-picker.compact {
+  align-items: flex-start;
+  gap: 6px;
+}
+.points-picker.compact .pp-row {
+  gap: 6px;
+}
+.points-picker.compact .pp-btn {
+  width: 36px;
+  height: 36px;
+}
+.points-picker.compact .pp-value {
+  padding: 4px 8px 4px 6px;
+  border-radius: 14px;
+}
+.points-picker.compact .pp-value input {
+  width: 3ch;
+  font-size: 24px;
+}
+.decay-graph svg {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  margin: 4px auto 0;
+  touch-action: none;
+  user-select: none;
+}
+.dg-grid {
+  stroke: rgba(255, 226, 190, 0.08);
+  stroke-width: 1;
+}
+.dg-axis {
+  stroke: rgba(255, 226, 190, 0.3);
+  stroke-width: 1.5;
+}
+.dg-tick {
+  fill: var(--cream-faint);
+  font: 700 10.5px var(--font-body);
+}
+.dg-tick-on {
+  fill: var(--caramel-hi);
+  font-size: 12px;
+}
+.dg-axis-label {
+  fill: var(--cream-faint);
+  font: 800 10px var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.dg-line {
+  fill: none;
+  stroke: var(--caramel);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dg-handle {
+  cursor: grab;
+  outline: none;
+}
+.is-dragging .dg-handle {
+  cursor: grabbing;
+}
+.dg-hit {
+  fill: transparent;
+}
+.dg-dot {
+  stroke: #1f0e07;
+  stroke-width: 2.5;
+  transition: r 0.15s;
+}
+.dg-dot-cool {
+  fill: #ffb067;
+}
+.dg-dot-stale {
+  fill: #9fd3ff;
+}
+.dg-handle:hover .dg-dot,
+.dg-handle:focus-visible .dg-dot {
+  r: 14;
+}
+.dg-handle:focus-visible .dg-hit {
+  stroke: var(--caramel);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+}
+.dg-emoji {
+  font-size: 11px;
+  pointer-events: none;
+}
+.dg-label {
+  fill: var(--cream);
+  font: 800 11.5px var(--font-body);
+  paint-order: stroke;
+  stroke: #1f0e07;
+  stroke-width: 4px;
+  pointer-events: none;
+}
+.decay-summary {
+  margin-top: 4px;
+  color: var(--cream);
+  font-weight: 700;
+}
+.decay-hint {
+  font-size: 12.5px;
+}
+.dg-tick-stale {
+  fill: #9fd3ff;
+  font-size: 12px;
+}
+.dg-guide {
+  stroke: rgba(255, 226, 190, 0.25);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+.dg-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.dg-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.dg-readout b {
+  font-weight: 400;
+}
+.dg-readout-cool {
+  background: rgba(255, 176, 103, 0.14);
+  color: #ffc896;
+}
+.dg-readout-stale {
+  background: rgba(159, 211, 255, 0.12);
+  color: #c4e4ff;
+}

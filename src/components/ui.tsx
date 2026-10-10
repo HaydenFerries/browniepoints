@@ -97,33 +97,41 @@ export function PointsPicker({
   onChange,
   presets = [5, 10, 20, 50],
   max = 1000,
+  compact = false,
 }: {
   value: number;
   onChange: (n: number) => void;
   presets?: number[];
   max?: number;
+  compact?: boolean;
 }) {
   const clamp = (n: number) => Math.max(1, Math.min(max, Math.round(n) || 1));
   const step = value >= 50 ? 5 : 1;
+  // The box can be cleared while typing (value 0); callers block saving until it's 1+.
+  const invalid = value < 1;
   return (
-    <div className="points-picker">
+    <div className={`points-picker ${compact ? 'compact' : ''}`}>
       <div className="pp-row">
         <button type="button" className="pp-btn" onClick={() => onChange(clamp(value - step))} aria-label="Fewer brownies">
           <Minus size={22} />
         </button>
-        <label className="pp-value">
-          <BrownieIcon size={44} />
+        <label className={`pp-value ${invalid ? 'is-invalid' : ''}`}>
+          <BrownieIcon size={compact ? 28 : 44} />
           <input
             inputMode="numeric"
             aria-label="Brownies"
-            value={value}
-            onChange={(e) => onChange(clamp(Number(e.target.value.replace(/\D/g, '')) || 1))}
+            aria-invalid={invalid || undefined}
+            value={invalid ? '' : value}
+            placeholder="0"
+            onChange={(e) => onChange(Math.min(max, Number(e.target.value.replace(/\D/g, '')) || 0))}
           />
         </label>
         <button type="button" className="pp-btn" onClick={() => onChange(clamp(value + step))} aria-label="More brownies">
           <Plus size={22} />
         </button>
       </div>
+      {invalid && <p className="pp-error">Needs to be at least 1 brownie.</p>}
+      {presets.length > 0 && (
       <div className="chips center">
         {presets.map((p) => (
           <button type="button" key={p} className={`chip ${p === value ? 'chip-on' : ''}`} onClick={() => onChange(p)}>
@@ -131,6 +139,7 @@ export function PointsPicker({
           </button>
         ))}
       </div>
+      )}
     </div>
   );
 }
