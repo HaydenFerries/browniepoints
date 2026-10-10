@@ -53,10 +53,16 @@ export function derive(state: AppState) {
     if (d.status === 'pending') pendingRedemptionsByReward.set(d.reward_id, [...(pendingRedemptionsByReward.get(d.reward_id) ?? []), d]);
 
   const open = (t: Task) => t.status === 'open';
-  const tasksForMe = state.tasks.filter((t) => t.assigned_to === myId && open(t));
-  const tasksForPartner = state.tasks.filter((t) => t.created_by === myId && open(t));
-  const doneForMe = state.tasks.filter((t) => t.assigned_to === myId && t.status === 'done');
-  const doneForPartner = state.tasks.filter((t) => t.created_by === myId && t.status === 'done');
+  const solo = (t: Task) => !t.shared;
+  const tasksForMe = state.tasks.filter((t) => solo(t) && t.assigned_to === myId && open(t));
+  const tasksForPartner = state.tasks.filter((t) => solo(t) && t.created_by === myId && open(t));
+  const doneForMe = state.tasks.filter((t) => solo(t) && t.assigned_to === myId && t.status === 'done');
+  const doneForPartner = state.tasks.filter((t) => solo(t) && t.created_by === myId && t.status === 'done');
+  // shared ("either of us") tasks: live ones, and proposals still being agreed
+  const sharedTasks = state.tasks.filter((t) => t.shared && open(t) && !t.awaiting);
+  const proposalsForMe = state.tasks.filter((t) => t.shared && open(t) && t.awaiting === myId);
+  const proposalsWaiting = state.tasks.filter((t) => t.shared && open(t) && !!t.awaiting && t.awaiting !== myId);
+  const doneShared = state.tasks.filter((t) => t.shared && t.status === 'done');
   const myWishes = state.rewards.filter((r: Reward) => r.wished_by === myId);
   const partnerWishes = state.rewards.filter((r: Reward) => r.wished_by !== myId);
 
@@ -80,6 +86,10 @@ export function derive(state: AppState) {
     tasksForPartner,
     doneForMe,
     doneForPartner,
+    sharedTasks,
+    proposalsForMe,
+    proposalsWaiting,
+    doneShared,
     myWishes,
     partnerWishes,
     taskById,
@@ -88,7 +98,7 @@ export function derive(state: AppState) {
     toDeliver,
     owedToMe,
     toPrice,
-    actionCount: claimsToReview.length + toDeliver.length + toPrice.length,
+    actionCount: claimsToReview.length + toDeliver.length + toPrice.length + proposalsForMe.length,
   };
 }
 

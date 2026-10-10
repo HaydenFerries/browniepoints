@@ -102,10 +102,12 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     unpair: () => rpc('unpair'),
     newPairCode: () => rpc<string>('new_pair_code'),
 
-    addTask: (t: TaskInput) =>
-      rpc('add_task', { p_title: t.title, p_details: t.details, p_points: t.points, p_repeatable: t.repeatable }),
-    updateTask: (id: UUID, t: TaskInput) =>
-      rpc('update_task', { p_task_id: id, p_title: t.title, p_details: t.details, p_points: t.points, p_repeatable: t.repeatable }),
+    createTask: (t: TaskInput) => rpc('create_task', { p_shared: t.shared, ...taskArgs(t) }),
+    editTask: (id: UUID, t: TaskInput) => rpc('edit_task', { p_task_id: id, ...taskArgs(t) }),
+    respondShared: (id, accept) => rpc('respond_shared_task', { p_task_id: id, p_accept: accept }),
+    setTaskActive: (id, active) => rpc('set_task_active', { p_task_id: id, p_active: active }),
+    bumpTask: (id) => rpc('bump_task', { p_task_id: id }),
+    setTaskOrder: (ids) => rpc('set_task_order', { p_ids: ids }),
     removeTask: (id) => rpc('remove_task', { p_task_id: id }),
     claimTask: (id, note) => rpc('claim_task', { p_task_id: id, p_note: note }),
     withdrawClaim: (id) => rpc('withdraw_claim', { p_claim_id: id }),
@@ -123,6 +125,18 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     adminListUsers: () => rpc<AdminUser[]>('admin_list_users'),
     adminSetStatus: (id, status, note) => rpc('admin_set_status', { p_user: id, p_status: status, p_note: note }),
     adminRemove: (id) => rpc('admin_remove_user', { p_user: id }),
+  };
+}
+
+function taskArgs(t: TaskInput) {
+  return {
+    p_title: t.title,
+    p_details: t.details,
+    p_partner_points: t.partnerPoints,
+    p_my_points: t.shared ? t.myPoints : null,
+    p_repeatable: t.repeatable,
+    p_decay_hours: t.decayHours,
+    p_decay_floor: t.decayFloor,
   };
 }
 

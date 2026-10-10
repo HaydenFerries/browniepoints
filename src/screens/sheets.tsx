@@ -1,12 +1,15 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
-import { Repeat, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Flame, Handshake, Lock, Repeat, Trash2, Users } from 'lucide-react';
 import { useLoaded } from '../app/store';
 import { Amount } from '../components/Brownie';
 import { PointsPicker, Sheet } from '../components/ui';
-import type { Claim, Reward, Task } from '../lib/types';
+import type { Claim, Reward, Task, TaskInput } from '../lib/types';
+import type { Backend } from '../lib/backend';
+import { basePrice, canManage, durationLabel } from '../lib/tasks';
 
 export type SheetState =
-  | { kind: 'task'; task?: Task }
+  | { kind: 'task'; task?: Task; shared?: boolean }
+  | { kind: 'proposal'; task: Task }
   | { kind: 'wish'; reward?: Reward }
   | { kind: 'price'; reward: Reward }
   | { kind: 'gift' }
@@ -36,7 +39,8 @@ export function SheetHost({ children, renderProfile }: { children: ReactNode; re
   return (
     <SheetCtx.Provider value={api}>
       {children}
-      {sheet?.kind === 'task' && <TaskSheet task={sheet.task} onClose={close} />}
+      {sheet?.kind === 'task' && <TaskSheet task={sheet.task} shared={sheet.shared} onClose={close} />}
+      {sheet?.kind === 'proposal' && <ProposalSheet task={sheet.task} onClose={close} />}
       {sheet?.kind === 'wish' && <WishSheet reward={sheet.reward} onClose={close} />}
       {sheet?.kind === 'price' && <PriceSheet reward={sheet.reward} onClose={close} />}
       {sheet?.kind === 'gift' && <GiftSheet onClose={close} />}
@@ -57,23 +61,45 @@ const TASK_IDEAS = [
   'Walk the dog',
   'Cook dinner',
 ];
+const SHARED_IDEAS = ['Clean the toilet', 'Mow the lawn', 'Vacuum the house', 'Change the sheets', 'Do the grocery run', 'Wash the car'];
+const STALE_SPEEDS = [24, 72, 168, 336];
+const FLOORS = [10, 25, 50];
 
-function TaskSheet({ task, onClose }: { task?: Task; onClose: () => void }) {
-  const { state, act } = useLoaded();
+function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared?: boolean; onClose: () => void }) {
+  const { state, d, act } = useLoaded();
   const partner = state.partner?.display_name ?? 'your partner';
+  const partnerId = d.partnerId ?? '';
+  const [shared, setShared] = useState(task ? !!task.shared : !!startShared);
   const [title, setTitle] = useState(task?.title ?? '');
   const [details, setDetails] = useState(task?.details ?? '');
-  const [points, setPoints] = useState(task?.points ?? 10);
+  const [partnerPoints, setPartnerPoints] = useState(task ? basePrice(task, partnerId) : 10);
+  const [myPoints, setMyPoints] = useState(task?.shared ? basePrice(task, d.myId) : 10);
   const [repeatable, setRepeatable] = useState(task?.repeatable ?? true);
+  const [timed, setTimed] = useState(!!task?.decay_hours);
+  const [decayHours, setDecayHours] = useState(task?.decay_hours ?? 72);
+  const [floor, setFloor] = useState(task?.decay_floor_pct ?? 25);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const canRemove = !task || canManage(task, d.myId);
 
   async function save() {
     setBusy(true);
-    const input = { title, details, points, repeatable };
-    const ok = await act((b) => (task ? b.updateTask(task.id, input) : b.addTask(input)), {
-      success: task ? 'Task updated' : `Task sent to ${partner}`,
-    });
+    const input: TaskInput = {
+      title,
+      details,
+      shared,
+      partnerPoints,
+      myPoints: shared ? myPoints : null,
+      repeatable,
+      decayHours: timed ? decayHours : null,
+      decayFloor: floor,
+    };
+    const success = shared
+      ? `Sent to ${partner} to agree`
+      : task
+        ? 'Task updated'
+        : `Task sent to ${partner}`;
+    const ok = await act((b) => (task ? b.editTask(task.id, input) : b.createTask(input)), { success });
     setBusy(false);
     if (ok) onClose();
   }
@@ -85,15 +111,25 @@ function TaskSheet({ task, onClose }: { task?: Task; onClose: () => void }) {
     if (ok) onClose();
   }
 
+  const heading = task ? (shared ? 'Edit shared task' : 'Edit task') : shared ? 'New shared task' : `New task for ${partner}`;
+  const subtitle = task
+    ? shared
+      ? `Any change goes back to ${partner} to agree.`
+      : undefined
+    : shared
+      ? `Either of you can do it, and you each earn your own price. ${partner} has to agree before it goes live.`
+      : `You decide what it’s worth. ${partner} earns the brownies once you approve it.`;
+
   return (
     <Sheet
       open
       onClose={onClose}
-      title={task ? 'Edit task' : `New task for ${partner}`}
-      subtitle={task ? undefined : `You decide what it’s worth. ${partner} earns the brownies once you approve it.`}
+      title={heading}
+      subtitle={subtitle}
       footer={
         <>
           {task &&
+            canRemove &&
             (confirmDelete ? (
               <button className="btn btn-danger" onClick={remove} disabled={busy}>
                 Really remove?
@@ -104,18 +140,31 @@ function TaskSheet({ task, onClose }: { task?: Task; onClose: () => void }) {
               </button>
             ))}
           <button className="btn btn-caramel grow" onClick={save} disabled={busy || !title.trim()}>
-            {task ? 'Save changes' : 'Send task'}
+            {shared ? (task ? 'Send changes to agree' : 'Propose to ' + partner) : task ? 'Save changes' : 'Send task'}
           </button>
         </>
       }
     >
+      {!task && (
+        <div className="field">
+          <span className="field-label">Who does it?</span>
+          <div className="toggle-pair">
+            <button type="button" className={!shared ? 'on' : ''} onClick={() => setShared(false)}>
+              {partner}
+            </button>
+            <button type="button" className={shared ? 'on' : ''} onClick={() => setShared(true)}>
+              <Users size={16} /> Either of us
+            </button>
+          </div>
+        </div>
+      )}
       <label className="field">
         <span className="field-label">What needs doing?</span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Do the dishes" maxLength={80} />
       </label>
       {!task && !title && (
         <div className="chips">
-          {TASK_IDEAS.map((idea) => (
+          {(shared ? SHARED_IDEAS : TASK_IDEAS).map((idea) => (
             <button key={idea} type="button" className="chip" onClick={() => setTitle(idea)}>
               {idea}
             </button>
@@ -128,10 +177,26 @@ function TaskSheet({ task, onClose }: { task?: Task; onClose: () => void }) {
         </span>
         <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={2} maxLength={500} placeholder="Little hints, deadlines, standards…" />
       </label>
-      <div className="field">
-        <span className="field-label">Worth</span>
-        <PointsPicker value={points} onChange={setPoints} />
-      </div>
+
+      {shared ? (
+        <div className="price-pair">
+          <div className="field">
+            <span className="field-label">If you do it, you earn</span>
+            <PointsPicker value={myPoints} onChange={setMyPoints} />
+          </div>
+          <div className="field">
+            <span className="field-label">If {partner} does it</span>
+            <PointsPicker value={partnerPoints} onChange={setPartnerPoints} />
+          </div>
+          <p className="muted small">Hate the job? Ask for more. You each get your own price.</p>
+        </div>
+      ) : (
+        <div className="field">
+          <span className="field-label">Worth</span>
+          <PointsPicker value={partnerPoints} onChange={setPartnerPoints} />
+        </div>
+      )}
+
       <div className="field">
         <span className="field-label">How often?</span>
         <div className="toggle-pair">
@@ -143,6 +208,128 @@ function TaskSheet({ task, onClose }: { task?: Task; onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      <div className="field">
+        <span className="field-label">Price over time</span>
+        <div className="toggle-pair">
+          <button type="button" className={!timed ? 'on' : ''} onClick={() => setTimed(false)}>
+            Always the same
+          </button>
+          <button type="button" className={timed ? 'on' : ''} onClick={() => setTimed(true)}>
+            <Flame size={16} /> Best when fresh
+          </button>
+        </div>
+        {timed && (
+          <div className="timed-options">
+            <span className="small muted">Goes stale over</span>
+            <div className="chips">
+              {STALE_SPEEDS.map((h) => (
+                <button key={h} type="button" className={`chip ${decayHours === h ? 'chip-on' : ''}`} onClick={() => setDecayHours(h)}>
+                  {durationLabel(h)}
+                </button>
+              ))}
+            </div>
+            <span className="small muted">Never drops below</span>
+            <div className="chips">
+              {FLOORS.map((f) => (
+                <button key={f} type="button" className={`chip ${floor === f ? 'chip-on' : ''}`} onClick={() => setFloor(f)}>
+                  {f}%
+                </button>
+              ))}
+            </div>
+            <p className="small muted">
+              Worth {shared ? `${myPoints} / ${partnerPoints}` : partnerPoints} when fresh, sliding to{' '}
+              {shared
+                ? `${Math.max(1, Math.round((myPoints * floor) / 100))} / ${Math.max(1, Math.round((partnerPoints * floor) / 100))}`
+                : Math.max(1, Math.round((partnerPoints * floor) / 100))}{' '}
+              after {durationLabel(decayHours)}. Warm it up any time to make it fresh again.
+            </p>
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/** Agree to a shared task, counter with different prices, or turn it down. */
+function ProposalSheet({ task, onClose }: { task: Task; onClose: () => void }) {
+  const { state, d, act } = useLoaded();
+  const partner = state.partner?.display_name ?? 'your partner';
+  const partnerId = d.partnerId ?? '';
+  const proposedMine = basePrice(task, d.myId);
+  const proposedTheirs = basePrice(task, partnerId);
+  const [myPoints, setMyPoints] = useState(proposedMine);
+  const [partnerPoints, setPartnerPoints] = useState(proposedTheirs);
+  const [busy, setBusy] = useState(false);
+  const changed = myPoints !== proposedMine || partnerPoints !== proposedTheirs;
+
+  const run = async (fn: (b: Backend) => Promise<unknown>, success: string, celebrate = false) => {
+    setBusy(true);
+    const ok = await act(fn, { success, celebrate });
+    setBusy(false);
+    if (ok) onClose();
+  };
+
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title={task.title}
+      subtitle={`${partner} wants to share this one. Either of you can do it and earn your own price.`}
+      footer={
+        <>
+          <button className="btn btn-ghost danger-text" disabled={busy} onClick={() => run((b) => b.respondShared(task.id, false), 'Turned down')}>
+            Decline
+          </button>
+          {changed ? (
+            <button
+              className="btn btn-caramel grow"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  (b) =>
+                    b.editTask(task.id, {
+                      title: task.title,
+                      details: task.details,
+                      shared: true,
+                      partnerPoints,
+                      myPoints,
+                      repeatable: task.repeatable,
+                      decayHours: task.decay_hours ?? null,
+                      decayFloor: task.decay_floor_pct ?? 25,
+                    }),
+                  `Counter-offer sent to ${partner}`,
+                )
+              }
+            >
+              <ArrowLeftRight size={16} /> Send counter-offer
+            </button>
+          ) : (
+            <button className="btn btn-caramel grow" disabled={busy} onClick={() => run((b) => b.respondShared(task.id, true), 'Deal! It’s live.', true)}>
+              <Handshake size={16} /> Agree
+            </button>
+          )}
+        </>
+      }
+    >
+      {task.details && <p className="quote">“{task.details}”</p>}
+      <p className="small muted">
+        {task.repeatable ? 'Again & again' : 'Just once'}
+        {task.decay_hours ? ` · best when fresh, goes stale over ${durationLabel(task.decay_hours)}` : ''}
+      </p>
+      <div className="price-pair">
+        <div className="field">
+          <span className="field-label">If you do it, you earn</span>
+          <PointsPicker value={myPoints} onChange={setMyPoints} />
+        </div>
+        <div className="field">
+          <span className="field-label">If {partner} does it</span>
+          <PointsPicker value={partnerPoints} onChange={setPartnerPoints} />
+        </div>
+      </div>
+      <p className="muted small">
+        {changed ? `Changing a price sends it back to ${partner} to agree.` : 'Happy with these prices? Agree and it goes live for both of you.'}
+      </p>
     </Sheet>
   );
 }
@@ -167,6 +354,7 @@ function WishSheet({ reward, onClose }: { reward?: Reward; onClose: () => void }
   const [emoji, setEmoji] = useState(reward?.emoji ?? '🎁');
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const locked = !!reward && reward.price != null;
 
   async function save() {
     setBusy(true);
@@ -203,12 +391,24 @@ function WishSheet({ reward, onClose }: { reward?: Reward; onClose: () => void }
                 <Trash2 size={18} />
               </button>
             ))}
-          <button className="btn btn-caramel grow" onClick={save} disabled={busy || !title.trim()}>
-            {reward ? 'Save changes' : 'Add to my wishlist'}
-          </button>
+          {locked ? (
+            <button className="btn btn-ghost grow" onClick={onClose}>
+              Close
+            </button>
+          ) : (
+            <button className="btn btn-caramel grow" onClick={save} disabled={busy || !title.trim()}>
+              {reward ? 'Save changes' : 'Add to my wishlist'}
+            </button>
+          )}
         </>
       }
     >
+      {locked && (
+        <p className="lock-note">
+          <Lock size={16} /> {partner} has priced this at {reward!.price}, so it’s locked. To change it, remove it and add a new wish.
+        </p>
+      )}
+      <fieldset className="plain" disabled={locked}>
       <div className="emoji-row" role="radiogroup" aria-label="Icon">
         {EMOJIS.map((e) => (
           <button key={e} type="button" role="radio" aria-checked={e === emoji} className={e === emoji ? 'on' : ''} onClick={() => setEmoji(e)}>
@@ -243,6 +443,7 @@ function WishSheet({ reward, onClose }: { reward?: Reward; onClose: () => void }
         </span>
         <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={2} maxLength={500} placeholder="Make it extra specific…" />
       </label>
+      </fieldset>
     </Sheet>
   );
 }

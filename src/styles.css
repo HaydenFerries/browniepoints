@@ -1043,6 +1043,173 @@ h3,
   color: #fff;
 }
 
+/* shared / timed / resting / draggable tasks */
+.tc-top .drag-handle {
+  margin: 2px -4px 0 -8px;
+}
+.drag-handle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--cream-faint);
+  cursor: grab;
+  touch-action: none;
+}
+.drag-handle:active {
+  cursor: grabbing;
+  color: var(--caramel);
+}
+.sortable-row {
+  position: relative;
+}
+.sortable-row.is-dragging {
+  z-index: 10;
+}
+.sortable-row.is-dragging .task-card {
+  border-color: rgba(240, 180, 94, 0.55);
+  box-shadow: 0 24px 40px -12px rgba(0, 0, 0, 0.8);
+  transform: scale(1.02);
+}
+.tc-text {
+  flex: 1;
+  min-width: 0;
+}
+.tc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tc-tags .tag {
+  white-space: nowrap;
+}
+.task-card .tc-bottom {
+  flex-wrap: wrap;
+}
+.task-card .tc-actions {
+  margin-left: auto;
+}
+.tc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.icon-btn.warm {
+  color: #ffb067;
+  border-color: rgba(255, 140, 60, 0.35);
+  background: rgba(255, 140, 60, 0.1);
+}
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.shared-prices {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.shared-prices span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shared-prices small {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+}
+.fresh-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--cream-dim);
+}
+.fresh-track {
+  flex: none;
+  width: 84px;
+  height: 7px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--well);
+}
+.fresh-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #8a5a3a, #f0b45e 60%, #ffb067);
+  transition: width 1s linear;
+}
+.task-card.is-resting {
+  opacity: 0.72;
+  border-style: dashed;
+}
+.resting-list summary .summary-hint {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cream-faint);
+}
+.resting-cards {
+  padding: 4px 0 12px;
+}
+.action-card.is-waiting {
+  opacity: 0.8;
+  border-style: dashed;
+}
+.price-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.timed-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--well);
+}
+.lock-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(240, 180, 94, 0.1);
+  border: 1px solid rgba(240, 180, 94, 0.3);
+  color: var(--cream-dim);
+  font-size: 14px;
+}
+.lock-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--caramel);
+}
+fieldset.plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+fieldset.plain:disabled {
+  opacity: 0.55;
+}
+
 /* --------------------------------------------------------------------------
    Rewards
    -------------------------------------------------------------------------- */

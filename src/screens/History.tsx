@@ -1,19 +1,25 @@
 import type { ComponentType } from 'react';
 import {
+  ArrowLeftRight,
   BadgeCheck,
   ClipboardList,
   Gift,
+  Flame,
   Hand,
+  Handshake,
   Heart,
   HeartCrack,
   HeartHandshake,
   PackageCheck,
+  Pause,
   PencilLine,
+  Play,
   RotateCcw,
   Sparkles,
   Tag,
   Trash2,
   Undo2,
+  X,
 } from 'lucide-react';
 import { useLoaded } from '../app/store';
 import { useSessionState } from '../app/useSessionState';
@@ -41,6 +47,13 @@ const ICONS: Record<ActivityKind, ComponentType<{ size?: number }>> = {
   redemption_cancelled: Undo2,
   redemption_delivered: PackageCheck,
   gift: HeartHandshake,
+  shared_proposed: Handshake,
+  shared_changed: ArrowLeftRight,
+  shared_agreed: Handshake,
+  shared_declined: X,
+  task_paused: Pause,
+  task_resumed: Play,
+  task_bumped: Flame,
 };
 
 export function FeedItem({ a, showTime = 'ago' }: { a: Activity; showTime?: 'ago' | 'clock' }) {

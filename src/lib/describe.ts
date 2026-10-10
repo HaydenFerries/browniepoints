@@ -40,6 +40,20 @@ export function describe(a: Activity, me: UUID, partnerName: string): string {
       return mine ? `You delivered ${t}` : `${partnerName} delivered your ${t}. Enjoy!`;
     case 'gift':
       return mine ? `You gifted ${partnerName} some brownies` : `${partnerName} gifted you brownies!`;
+    case 'shared_proposed':
+      return mine ? `You proposed a shared task: ${t}` : `${partnerName} proposed a shared task: ${t}`;
+    case 'shared_changed':
+      return mine ? `You suggested changes to ${t}` : `${partnerName} suggested changes to ${t}`;
+    case 'shared_agreed':
+      return mine ? `You agreed to ${t}` : `${partnerName} agreed to ${t}. It’s live!`;
+    case 'shared_declined':
+      return `${who} turned down ${t}`;
+    case 'task_paused':
+      return `${who} put ${t} on pause`;
+    case 'task_resumed':
+      return `${who} brought back ${t}`;
+    case 'task_bumped':
+      return mine ? `You warmed up ${t}` : `${partnerName} warmed up ${t}. It’s worth full price again!`;
     default:
       return `${who} did something sweet`;
   }

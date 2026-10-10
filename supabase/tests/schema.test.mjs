@@ -223,6 +223,73 @@ ok(sD.me.status === 'rejected' && sD.me.status_note === 'Sorry, friends only', '
 await expectError(D, "select public.add_task('x', '', 1, true)", [], /wasn.t approved/, 'rejected account cannot act');
 ok((await state(A)).admin.pending === 0, 'rejected sign-ups no longer count as waiting');
 
+// shared tasks: both agree on a price for each person
+const tid = (await as(A, "select public.create_task('Clean the toilet', '', true, 30, 10, true, null, null) as id")).rows[0].id;
+let st = (await state(B)).tasks.find((t) => t.id === tid);
+ok(st.shared && st.awaiting === B && st.points === 10 && st.points_other === 30, 'shared task proposed, waiting on the partner');
+await expectError(A, 'select public.claim_task($1, $2)', [tid, ''], /both need to agree/, 'cannot do a shared task before agreement');
+await expectError(A, 'select public.respond_shared_task($1, true)', [tid], /waiting on you/, 'proposer cannot agree to their own proposal');
+await as(B, "select public.edit_task($1, 'Clean the toilet', '', 10, 40, true, null, null)", [tid]); // counter: I earn 40, you 10
+st = (await state(A)).tasks.find((t) => t.id === tid);
+ok(st.awaiting === A && st.points === 10 && st.points_other === 40, 'counter-offer goes back to the proposer');
+await as(A, 'select public.respond_shared_task($1, true)', [tid]);
+ok((await state(A)).tasks.find((t) => t.id === tid).awaiting === null, 'agreed shared task goes live');
+const balB0 = (await state(B)).balances[B] ?? 0;
+await as(B, 'select public.claim_task($1, $2)', [tid, '']);
+let cl = (await state(A)).claims.find((c) => c.task_id === tid && c.status === 'pending');
+ok(cl.points === 40, 'partner earns their own price');
+await as(A, 'select public.review_claim($1, true, $2)', [cl.id, '']);
+ok((await state(B)).balances[B] === balB0 + 40, 'approved shared task pays the doer');
+await as(A, 'select public.claim_task($1, $2)', [tid, '']);
+cl = (await state(B)).claims.find((c) => c.task_id === tid && c.status === 'pending');
+ok(cl.points === 10, 'the proposer earns their own (different) price');
+await as(B, 'select public.review_claim($1, false, $2)', [cl.id, '']);
+const declined = (await as(B, "select public.create_task('Unclog drain', '', true, 5, 5, false, null, null) as id")).rows[0].id;
+await as(A, 'select public.respond_shared_task($1, false)', [declined]);
+ok(!(await state(A)).tasks.some((t) => t.id === declined), 'declined proposal disappears');
+
+// timed tasks: 40 brownies, stale after 10h, never below 25%
+const timed = (await as(A, "select public.create_task('Fold laundry', '', false, 40, null, true, 10, 25) as id")).rows[0].id;
+const claimNow = async () => {
+  await as(B, 'select public.claim_task($1, $2)', [timed, '']);
+  const c = (await state(B)).claims.find((x) => x.task_id === timed && x.status === 'pending');
+  await as(B, 'select public.withdraw_claim($1)', [c.id]);
+  return c.points;
+};
+ok((await claimNow()) === 40, 'fresh timed task is worth full price');
+await db.query("update public.tasks set bumped_at = now() - interval '5 hours' where id = $1", [timed]);
+ok((await claimNow()) === 25, 'half-way stale: 25% + 75% × 0.5 of 40 = 25');
+await db.query("update public.tasks set bumped_at = now() - interval '30 hours' where id = $1", [timed]);
+ok((await claimNow()) === 10, 'fully stale bottoms out at 25% (10)');
+await expectError(B, 'select public.bump_task($1)', [timed], /Only the person who set/, 'the doer cannot warm up their own task');
+await as(A, 'select public.bump_task($1)', [timed]);
+ok((await claimNow()) === 40, 'warming it up makes it fresh again');
+await db.query("update public.tasks set bumped_at = now() - interval '30 hours' where id = $1", [timed]);
+await as(B, 'select public.claim_task($1, $2)', [timed, '']);
+cl = (await state(A)).claims.find((c) => c.task_id === timed && c.status === 'pending');
+await as(A, 'select public.review_claim($1, true, $2)', [cl.id, '']);
+ok((await claimNow()) === 40, 'completing a repeatable timed task makes it fresh again');
+
+// pausing
+await as(A, 'select public.set_task_active($1, false)', [timed]);
+await expectError(B, 'select public.claim_task($1, $2)', [timed, ''], /resting/, 'paused task cannot be claimed');
+await expectError(B, 'select public.set_task_active($1, true)', [timed], /Only the person who set/, 'the doer cannot unpause it');
+await as(A, 'select public.set_task_active($1, true)', [timed]);
+ok((await state(B)).tasks.find((t) => t.id === timed).active === true, 'resumed task is live again');
+await as(B, 'select public.set_task_active($1, false)', [tid]);
+ok((await state(A)).tasks.find((t) => t.id === tid).active === false, 'either partner can pause a shared task');
+
+// personal ordering
+await as(B, 'select public.set_task_order($1::uuid[])', [[timed, tid]]);
+const orderB = (await state(B)).me.task_order;
+ok(orderB[0] === timed && orderB[1] === tid, 'personal task order is saved');
+
+// wishes lock once priced
+const wid = (await as(B, "select public.add_reward('Foot rub', '', '🦶') as id")).rows[0].id;
+await as(B, "select public.update_reward($1, 'Long foot rub', '', '🦶')", [wid]);
+await as(A, 'select public.price_reward($1, 20)', [wid]);
+await expectError(B, "select public.update_reward($1, 'Foot rub forever', '', '🦶')", [wid], /locked/, 'a priced wish can no longer be edited');
+
 // admin removes accounts
 await expectError(A, 'select public.admin_remove_user($1)', [A], /own account/, 'admin cannot remove themselves');
 await as(A, 'select public.admin_remove_user($1)', [B]);

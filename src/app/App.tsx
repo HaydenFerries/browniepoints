@@ -180,7 +180,7 @@ function TabBar({ tab, go }: { tab: Tab; go: (t: Tab) => void }) {
   const { d } = useLoaded();
   const badges: Partial<Record<Tab, number>> = {
     home: d.actionCount,
-    tasks: d.claimsToReview.length,
+    tasks: d.claimsToReview.length + d.proposalsForMe.length,
     treats: d.toDeliver.length + d.toPrice.length,
   };
   return (

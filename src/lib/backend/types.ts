@@ -33,8 +33,13 @@ export interface Backend {
   unpair(): Promise<void>;
   newPairCode(): Promise<string>;
 
-  addTask(input: TaskInput): Promise<void>;
-  updateTask(id: UUID, input: TaskInput): Promise<void>;
+  createTask(input: TaskInput): Promise<void>;
+  /** Shared tasks: any edit sends it back to your partner to agree. */
+  editTask(id: UUID, input: TaskInput): Promise<void>;
+  respondShared(id: UUID, accept: boolean): Promise<void>;
+  setTaskActive(id: UUID, active: boolean): Promise<void>;
+  bumpTask(id: UUID): Promise<void>;
+  setTaskOrder(ids: UUID[]): Promise<void>;
   removeTask(id: UUID): Promise<void>;
   claimTask(id: UUID, note: string): Promise<void>;
   withdrawClaim(id: UUID): Promise<void>;

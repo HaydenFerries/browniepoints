@@ -23,6 +23,19 @@ Changes show up live on the other phone.
 
 You can also **Treat** your partner with a few spontaneous brownies and a note.
 
+More ways to set tasks:
+
+- **Shared tasks ("either of us")**: jobs that just need doing. One of you proposes a price
+  for each person (whoever hates the job can ask for more), the other agrees or
+  counter-offers, and it only goes live once you both agree. Either of you can then do it.
+- **Best when fresh**: a task can lose value over a day, three days, a week or two, down to a
+  floor you choose. **Warm it up** to make it worth full price again; repeatable ones freshen
+  up each time they're done.
+- **Resting tasks**: pause an again-and-again task until it's needed, then bring it back.
+- **Drag to reorder** your task lists; each of you keeps your own order.
+
+Wishes lock once your partner has priced them, so the deal can't change after the fact.
+
 ## Invite-only sign-ups
 
 New accounts start as **pending** and only see an "Account waiting for approval" screen.

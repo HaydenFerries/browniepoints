@@ -5,7 +5,7 @@ import { BrownieIcon } from '../components/Brownie';
 import { Jar } from '../components/Jar';
 import { Avatar, CountUp } from '../components/ui';
 import { Feed } from './History';
-import { DeliverCard, PriceCard, ReviewClaimCard, WaitingRow } from './cards';
+import { DeliverCard, PriceCard, ProposalCard, ReviewClaimCard, WaitingRow } from './cards';
 import { useSheets } from './sheets';
 import type { Tab } from '../app/App';
 
@@ -102,6 +102,9 @@ export function Home({ go }: { go: (t: Tab) => void }) {
               </div>
             </article>
           ) : null}
+          {d.proposalsForMe.map((t) => (
+            <ProposalCard key={t.id} task={t} />
+          ))}
           {d.claimsToReview.map((c) => (
             <ReviewClaimCard key={c.id} claim={c} />
           ))}

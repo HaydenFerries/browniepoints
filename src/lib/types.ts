@@ -17,20 +17,37 @@ export interface Profile {
   /** The admin's note to this person when rejected or suspended (own profile only). */
   status_note?: string;
   is_admin?: boolean;
+  /** Your own drag-and-drop order of tasks. */
+  task_order?: UUID[];
 }
 
 export interface Task {
   id: UUID;
   couple_id: UUID;
-  created_by: UUID; // the person who set it (and decided the points)
-  assigned_to: UUID; // the person who does it
+  created_by: UUID; // the person who set (or proposed) it
+  assigned_to: UUID | null; // who does it; null for shared tasks (either of you)
   title: string;
   details: string;
+  /** Regular task: what the doer earns. Shared task: what the creator earns. */
   points: number;
   repeatable: boolean;
   status: 'open' | 'done' | 'archived';
   created_at: string;
   updated_at: string;
+  // Added later; optional so older databases still load.
+  shared?: boolean;
+  /** Shared task: what the non-creator earns. */
+  points_other?: number | null;
+  /** Shared task waiting for this person to agree. */
+  awaiting?: UUID | null;
+  /** Paused tasks rest until they're needed again. */
+  active?: boolean;
+  /** Timed: hours to go fully stale (null = always worth the same). */
+  decay_hours?: number | null;
+  /** Timed: the lowest it drops to, as a % of the price. */
+  decay_floor_pct?: number;
+  /** Timed: when it was last fresh. */
+  bumped_at?: string;
 }
 
 export interface Claim {
@@ -88,7 +105,14 @@ export type ActivityKind =
   | 'reward_redeemed'
   | 'redemption_cancelled'
   | 'redemption_delivered'
-  | 'gift';
+  | 'gift'
+  | 'shared_proposed'
+  | 'shared_changed'
+  | 'shared_agreed'
+  | 'shared_declined'
+  | 'task_paused'
+  | 'task_resumed'
+  | 'task_bumped';
 
 export interface Activity {
   id: number;
@@ -136,8 +160,17 @@ export interface AdminUser {
 export interface TaskInput {
   title: string;
   details: string;
-  points: number;
+  /** Shared (either of you) vs. set for your partner. Fixed once created. */
+  shared: boolean;
+  /** What your partner earns for doing it. */
+  partnerPoints: number;
+  /** What you earn for doing it (shared tasks only). */
+  myPoints: number | null;
   repeatable: boolean;
+  /** Hours until fully stale, or null for a fixed price. */
+  decayHours: number | null;
+  /** Lowest value, as a % of the price. */
+  decayFloor: number;
 }
 
 export interface RewardInput {
