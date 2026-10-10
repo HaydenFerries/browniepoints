@@ -181,7 +181,7 @@ export interface TaskInput {
   /** Stale price (brownies) for your partner, and for you on shared tasks. */
   stalePartner: number | null;
   staleMine: number | null;
-  /** New tasks only: false = start resting, switch it on later. */
+  /** false = resting (switch it on later). New tasks default to live; edits leave it as is when unset. */
   startActive?: boolean;
 }
 

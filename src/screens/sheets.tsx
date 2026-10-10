@@ -6,7 +6,7 @@ import { PointsPicker, Sheet } from '../components/ui';
 import { DecayGraph } from '../components/DecayGraph';
 import type { Claim, Reward, Task, TaskInput } from '../lib/types';
 import type { Backend } from '../lib/backend';
-import { basePrice, canManage, durationLabel, rawStale, staleValue } from '../lib/tasks';
+import { basePrice, canManage, durationLabel, isActive, rawStale, staleValue } from '../lib/tasks';
 
 /** A stale price only if it's still below the (possibly new) full price. */
 const fits = (stale: number | null, price: number) => (stale != null && stale < price ? stale : null);
@@ -93,10 +93,11 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
       (basePrice(task, d.myId) === basePrice(task, partnerId) &&
         (!task.decay_hours || Math.round(staleValue(task, d.myId)) === Math.round(staleValue(task, partnerId)))),
   );
-  const [startActive, setStartActive] = useState(true);
+  const [startActive, setStartActive] = useState(task ? isActive(task) : true);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const canRemove = !task || canManage(task, d.myId);
+  const canSwitchType = !task || (!!task.shared && !!task.awaiting && task.created_by === d.myId);
 
   const split = shared && !samePrice;
   const autoStale = (price: number) => Math.max(1, Math.round(price / 4));
@@ -130,7 +131,18 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
         : startActive
           ? `Task sent to ${partner}`
           : 'Saved to Resting. Switch it on when it’s needed';
-    const ok = await act((b) => (task ? b.editTask(task.id, input) : b.createTask(input)), { success });
+    const ok = await act(
+      async (b) => {
+        if (!task) return b.createTask(input);
+        if (shared !== !!task.shared) {
+          // switching a proposal between shared and regular: replace it
+          await b.removeTask(task.id);
+          return b.createTask(input);
+        }
+        return b.editTask(task.id, input);
+      },
+      { success },
+    );
     setBusy(false);
     if (ok) onClose();
   }
@@ -176,7 +188,7 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
         </>
       }
     >
-      {!task && (
+      {canSwitchType && (
         <div className="field">
           <span className="field-label">Who does it?</span>
           <div className="toggle-pair">
@@ -309,12 +321,11 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
         )}
       </div>
 
-      {!task && (
-        <div className="field">
-          <span className="field-label">Start it</span>
+      <div className="field">
+          <span className="field-label">{task ? 'Status' : 'Start it'}</span>
           <div className="toggle-pair">
             <button type="button" className={startActive ? 'on' : ''} onClick={() => setStartActive(true)}>
-              <Play size={16} /> Now
+              <Play size={16} /> {task ? 'Live' : 'Now'}
             </button>
             <button type="button" className={!startActive ? 'on' : ''} onClick={() => setStartActive(false)}>
               <Moon size={16} /> Resting
@@ -322,12 +333,11 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
           </div>
           {!startActive && (
             <p className="small muted">
-              Pre-make it now and switch it on from the Resting section when it’s needed.
+              {task ? 'It waits in the Resting section until it’s switched on.' : 'Pre-make it now and switch it on from the Resting section when it’s needed.'}
               {shared ? ` ${partner} still agrees to it first.` : ''}
             </p>
           )}
         </div>
-      )}
     </Sheet>
   );
 }
@@ -389,7 +399,7 @@ function ProposalSheet({ task, onClose }: { task: Task; onClose: () => void }) {
               <ArrowLeftRight size={16} /> Send counter-offer
             </button>
           ) : (
-            <button className="btn btn-caramel grow" disabled={busy} onClick={() => run((b) => b.respondShared(task.id, true), 'Deal! It’s live.', true)}>
+            <button className="btn btn-caramel grow" disabled={busy} onClick={() => run((b) => b.respondShared(task.id, true), task.active === false ? 'Deal! It’s waiting in Resting.' : 'Deal! It’s live.', true)}>
               <Handshake size={16} /> Agree
             </button>
           )}
@@ -400,8 +410,15 @@ function ProposalSheet({ task, onClose }: { task: Task; onClose: () => void }) {
       <p className="small muted">
         {task.repeatable ? 'Again & again' : 'Just once'}
         {task.decay_hours ? ` · best when fresh, goes stale over ${durationLabel(task.decay_hours)}` : ''}
-        {task.active === false ? ' · starts resting until one of you switches it on' : ''}
       </p>
+      {task.active === false && (
+        <p className="lock-note resting-note">
+          <Moon size={16} />
+          <span>
+            <strong>Starts resting.</strong> Once you agree, it waits in the Resting section until one of you switches it on.
+          </span>
+        </p>
+      )}
       <div className="price-pair">
         <div className="field">
           <span className="field-label">If you do it, you earn</span>
@@ -413,7 +430,9 @@ function ProposalSheet({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
       <p className="muted small">
-        {changed ? `Changing a price sends it back to ${partner} to agree.` : 'Happy with these prices? Agree and it goes live for both of you.'}
+        {changed ? `Changing a price sends it back to ${partner} to agree.` : task.active === false
+            ? 'Happy with these prices? Agree and it waits in Resting for both of you.'
+            : 'Happy with these prices? Agree and it goes live for both of you.'}
       </p>
     </Sheet>
   );

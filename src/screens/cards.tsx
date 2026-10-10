@@ -298,8 +298,12 @@ export function ProposalCard({ task }: { task: Task }) {
         <h3>{task.title}</h3>
         <p className="meta">
           You’d earn <Amount n={basePrice(task, d.myId)} size="sm" /> · {p} <Amount n={basePrice(task, partnerId)} size="sm" />
-          {task.active === false && ' · starts resting'}
         </p>
+        {task.active === false && (
+          <span className="tag resting-tag">
+            <Moon size={12} /> Starts resting
+          </span>
+        )}
       </div>
       <div className="ac-actions">
         {forMe ? (

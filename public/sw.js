@@ -1,7 +1,8 @@
 // Brownie Points service worker: makes the app installable and quick to open.
 // Pages are network-first (so new deploys show up), hashed build assets are
-// cache-first. Supabase and other cross-origin requests are never touched.
-const CACHE = 'bp-v1';
+// cache-first. Supabase and other cross-origin requests are never touched,
+// and neither is version.json (the app's "is there a newer version?" check).
+const CACHE = 'bp-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -18,6 +19,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith('/version.json')) return;
 
   if (req.mode === 'navigate') {
     event.respondWith(

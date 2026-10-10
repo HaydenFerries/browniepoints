@@ -355,9 +355,12 @@ export function createDemoBackend(): Backend {
         const task = db.tasks.find((x) => x.id === id && x.couple_id === me.couple_id && x.status === 'open');
         if (!task) throw new Oops('That task isn’t around any more.');
         validateTask({ ...t, shared: !!task.shared });
+        const waking = t.startActive === true && !isActive(task);
         const common = {
           title: trim(t.title), details: trim(t.details), repeatable: t.repeatable,
           decay_hours: t.decayHours, decay_floor_pct: t.decayFloor, updated_at: now(),
+          active: t.startActive ?? isActive(task),
+          bumped_at: waking ? now() : task.bumped_at,
           decay_grace_hours: t.decayHours ? t.decayGrace : 0,
         };
         if (task.shared) {

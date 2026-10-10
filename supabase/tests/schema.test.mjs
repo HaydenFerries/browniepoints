@@ -333,6 +333,20 @@ st = (await state(A)).tasks.find((t) => t.id === premadeShared);
 ok(st.awaiting === null && st.active === false, 'an agreed shared task created resting stays resting');
 ok((await as(A, "select public.create_task('Old-style call', '', false, 5, null, true, null, null) as id")).rows[0].id, 'calls without the new argument still work');
 
+// editing can switch a task between live and resting
+const proposal = (await as(A, "select public.create_task('Clean the gutters', '', true, 30, 30, false, null, null) as id")).rows[0].id;
+await as(A, "select public.edit_task($1, 'Clean the gutters', '', 30, 30, false, null, null, 0, null, null, false)", [proposal]);
+st = (await state(B)).tasks.find((t) => t.id === proposal);
+ok(st.active === false && st.awaiting === B, 'a proposal can be switched to resting before it is agreed');
+await as(B, 'select public.respond_shared_task($1, true)', [proposal]);
+ok((await state(A)).tasks.find((t) => t.id === proposal).active === false, 'it stays resting once agreed');
+await as(A, "select public.edit_task($1, 'Rake the leaves', '', 15, null, false, 72, 25, 0, null, null, true)", [premade]);
+await as(A, 'select public.set_task_active($1, false)', [premade]);
+await as(A, "select public.edit_task($1, 'Rake the leaves', '', 15, null, false, 72, 25)", [premade]);
+ok((await state(A)).tasks.find((t) => t.id === premade).active === false, 'edits without the status leave it as it was');
+await as(A, "select public.edit_task($1, 'Rake the leaves', '', 15, null, false, 72, 25, 0, null, null, true)", [premade]);
+ok((await state(A)).tasks.find((t) => t.id === premade).active === true, 'editing can switch it back on');
+
 // personal ordering
 await as(B, 'select public.set_task_order($1::uuid[])', [[timed, tid]]);
 const orderB = (await state(B)).me.task_order;

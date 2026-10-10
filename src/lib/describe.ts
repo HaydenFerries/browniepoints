@@ -55,6 +55,7 @@ export function describe(a: Activity, me: UUID, partnerName: string): string {
     case 'task_bumped':
       return mine ? `You warmed up ${t}` : `${partnerName} warmed up ${t}. It’s worth full price again!`;
     default:
-      return `${who} did something sweet`;
+      // an older copy of the app seeing a newer kind of entry
+      return t ? `${who} updated ${t}` : `${who} made a change`;
   }
 }

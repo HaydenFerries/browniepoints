@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import { Gift, House, ListChecks, ScrollText } from 'lucide-react';
 import { AppProvider, useApp, useLoaded } from './store';
+import { useUpdateCheck } from './useUpdateCheck';
 import { BrownieIcon } from '../components/Brownie';
 import { Drip } from '../components/Drip';
 import { Avatar, Burst, Toasts } from '../components/ui';
@@ -29,6 +30,7 @@ export default function App() {
       <Backdrop />
       <Shell />
       <Toasts />
+      <UpdateBar />
       <Burst />
     </AppProvider>
   );
@@ -36,6 +38,17 @@ export default function App() {
 
 function Backdrop() {
   return <div className="backdrop" aria-hidden="true" />;
+}
+
+/** Shown when a newer version is live but someone's mid-edit (otherwise it just reloads). */
+function UpdateBar() {
+  const ready = useUpdateCheck();
+  if (!ready) return null;
+  return (
+    <button className="update-bar" onClick={() => location.reload()}>
+      <BrownieIcon size={22} /> A fresh batch is out of the oven. <strong>Tap to update</strong>
+    </button>
+  );
 }
 
 function Shell() {
