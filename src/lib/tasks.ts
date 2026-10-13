@@ -43,6 +43,16 @@ export const canManage = (t: Task, who: UUID) => !!t.shared || t.created_by === 
 
 export const isActive = (t: Task) => t.active !== false;
 
+/** Sleeping after being done (wakes up by itself). */
+export const isAsleep = (t: Task, now = Date.now()) => !!t.sleeping_until && Date.parse(t.sleeping_until) > now;
+
+/** Live = can be done right now (not paused, not sleeping). */
+export const isLive = (t: Task, now = Date.now()) => isActive(t) && !isAsleep(t, now);
+
+/** Hours until a sleeping task wakes up. */
+export const sleepLeft = (t: Task, now = Date.now()) =>
+  t.sleeping_until ? Math.max(0, (Date.parse(t.sleeping_until) - now) / 3_600_000) : 0;
+
 /** Hours until a timed task starts cooling (0 once it has). */
 export function graceLeft(t: Task, now = Date.now()): number {
   if (!t.decay_hours || !t.decay_grace_hours) return 0;

@@ -17,7 +17,7 @@ import type {
   UUID,
 } from '../types';
 import type { AuthEvent, Backend } from './types';
-import { canManage, isActive, taskValue } from '../tasks';
+import { canManage, isActive, isAsleep, taskValue } from '../tasks';
 
 const DB_KEY = 'bp-demo-db-v1';
 const SESSION_KEY = 'bp-demo-session';
@@ -337,6 +337,8 @@ export function createDemoBackend(): Backend {
           repeatable: t.repeatable, status: 'open' as const, created_at: now(), updated_at: now(),
           active: t.startActive ?? true, decay_hours: t.decayHours, decay_floor_pct: t.decayFloor, bumped_at: now(),
           decay_grace_hours: t.decayHours ? t.decayGrace : 0,
+          sleep_hours: t.repeatable ? t.sleepHours : null,
+          sleeping_until: null,
         };
         const stalePart = t.decayHours ? t.stalePartner : null;
         const staleMine = t.decayHours && t.shared ? t.staleMine : null;
@@ -354,18 +356,27 @@ export function createDemoBackend(): Backend {
         const partner = partnerOf(db, me);
         const task = db.tasks.find((x) => x.id === id && x.couple_id === me.couple_id && x.status === 'open');
         if (!task) throw new Oops('That task isn’t around any more.');
-        validateTask({ ...t, shared: !!task.shared });
+        const toShared = t.shared;
+        if (toShared !== !!task.shared) {
+          if (task.created_by !== me.id) throw new Oops('Only the person who set a task can change who does it.');
+          if (db.claims.some((c) => c.task_id === id && c.status === 'pending'))
+            throw new Oops('Someone’s marked this as done. Approve or send it back first.');
+        }
+        validateTask(t);
         const waking = t.startActive === true && !isActive(task);
         const common = {
           title: trim(t.title), details: trim(t.details), repeatable: t.repeatable,
           decay_hours: t.decayHours, decay_floor_pct: t.decayFloor, updated_at: now(),
           active: t.startActive ?? isActive(task),
           bumped_at: waking ? now() : task.bumped_at,
+          sleep_hours: t.repeatable ? t.sleepHours : null,
           decay_grace_hours: t.decayHours ? t.decayGrace : 0,
         };
-        if (task.shared) {
+        if (toShared) {
           const mine = me.id === task.created_by;
           Object.assign(task, common, {
+            shared: true,
+            assigned_to: null,
             points: mine ? t.myPoints! : t.partnerPoints,
             points_other: mine ? t.partnerPoints : t.myPoints!,
             stale_points: t.decayHours ? (mine ? t.staleMine : t.stalePartner) : null,
@@ -375,7 +386,10 @@ export function createDemoBackend(): Backend {
           log(db, me.couple_id!, me.id, 'shared_changed', task.title, t.partnerPoints, null, partner.id);
         } else {
           if (task.created_by !== me.id) throw new Oops('Only the person who set a task can change it.');
-          Object.assign(task, common, { points: t.partnerPoints, stale_points: t.decayHours ? t.stalePartner : null });
+          Object.assign(task, common, {
+            shared: false, assigned_to: partner.id, awaiting: null, points_other: null, stale_points_other: null,
+            points: t.partnerPoints, stale_points: t.decayHours ? t.stalePartner : null,
+          });
           log(db, me.couple_id!, me.id, 'task_updated', task.title, t.partnerPoints, null, task.assigned_to);
         }
       }),
@@ -395,8 +409,8 @@ export function createDemoBackend(): Backend {
         const task = db.tasks.find((x) => x.id === id && x.couple_id === me.couple_id && x.status === 'open');
         if (!task) throw new Oops('That task isn’t around any more.');
         if (!canManage(task, me.id)) throw new Oops('Only the person who set a task can pause it.');
-        if (isActive(task) === active) return;
-        Object.assign(task, { active, updated_at: now() }, active ? { bumped_at: now() } : {});
+        if (isActive(task) === active && !(active && isAsleep(task))) return;
+        Object.assign(task, { active, updated_at: now() }, active ? { bumped_at: now(), sleeping_until: null } : {});
         log(db, me.couple_id!, me.id, active ? 'task_resumed' : 'task_paused', task.title, null, null, null);
       }),
 
@@ -434,6 +448,7 @@ export function createDemoBackend(): Backend {
           if (task.awaiting) throw new Oops('You both need to agree on this one first.');
         } else if (task.assigned_to !== me.id) throw new Oops('This task is for your partner, not you.');
         if (!isActive(task)) throw new Oops('That task is resting right now.');
+        if (isAsleep(task)) throw new Oops('That task is sleeping. It’ll be back soon.');
         if (db.claims.some((c) => c.task_id === id && c.status === 'pending')) throw new Oops('Already marked as done. Waiting on approval.');
         const value = taskValue(task, me.id);
         db.claims.push({ id: uid(), couple_id: me.couple_id!, task_id: id, claimed_by: me.id, points: value, note: trim(note), status: 'pending', created_at: now(), resolved_at: null });
@@ -459,7 +474,11 @@ export function createDemoBackend(): Backend {
         if (approve) {
           Object.assign(claim, { status: 'approved', resolved_at: now() });
           if (!task.repeatable) Object.assign(task, { status: 'done', updated_at: now() });
-          else if (task.decay_hours) task.bumped_at = now(); // done, so it starts fresh again
+          else if (task.sleep_hours === 0) task.active = false; // rests until switched on
+          else if (task.sleep_hours) {
+            const wake = new Date(Date.now() + task.sleep_hours * 3_600_000).toISOString();
+            Object.assign(task, { sleeping_until: wake, bumped_at: wake }); // sleeps, wakes up fresh
+          } else if (task.decay_hours) task.bumped_at = now(); // done, so it starts fresh again
           log(db, me.couple_id!, me.id, 'task_approved', task.title, claim.points, claim.points, claim.claimed_by, trim(note));
         } else {
           Object.assign(claim, { status: 'declined', resolved_at: now() });
@@ -671,6 +690,7 @@ export function createDemoBackend(): Backend {
         const bins = task(sam, alex, 'Take the bins out', '', 5, true, 10);
         task(sam, alex, 'Clean out the car', 'Every crumb. You know which crumbs.', 30, false, 6);
 
+        dishes.sleep_hours = 12; // not dirty again straight away
         approve(dishes, 10);
         approve(date, 7, 'Best night ever 🥰');
         approve(dishes, 5);

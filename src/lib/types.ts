@@ -53,6 +53,10 @@ export interface Task {
   /** Timed: stale price (brownies) for the creator / the other person. */
   stale_points?: number | null;
   stale_points_other?: number | null;
+  /** Repeatable: after it's done, null = ready again, 0 = rests until switched on, n = sleeps n hours. */
+  sleep_hours?: number | null;
+  /** Sleeping until this time (wakes up by itself). */
+  sleeping_until?: string | null;
 }
 
 export interface Claim {
@@ -181,6 +185,8 @@ export interface TaskInput {
   /** Stale price (brownies) for your partner, and for you on shared tasks. */
   stalePartner: number | null;
   staleMine: number | null;
+  /** Repeatable tasks: after it's done, null = ready again, 0 = rest until switched on, n = sleep n hours. */
+  sleepHours: number | null;
   /** false = resting (switch it on later). New tasks default to live; edits leave it as is when unset. */
   startActive?: boolean;
 }

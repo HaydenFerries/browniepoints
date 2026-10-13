@@ -1,26 +1,28 @@
 import { Plus } from 'lucide-react';
 import { useLoaded } from '../app/store';
+import { useNow } from '../app/useNow';
 import { useSessionState } from '../app/useSessionState';
 import { Amount } from '../components/Brownie';
 import { SortableList } from '../components/SortableList';
 import { Empty, Segmented } from '../components/ui';
-import { inOrder, isActive } from '../lib/tasks';
+import { inOrder, isLive } from '../lib/tasks';
 import type { Task } from '../lib/types';
 import { ProposalCard, TaskCard } from './cards';
 import { useSheets } from './sheets';
 
-type View = 'mine' | 'shared' | 'theirs';
+type View = 'mine' | 'theirs';
 
 export function Tasks() {
   const { state, d, act } = useLoaded();
   const sheets = useSheets();
+  const now = useNow();
   const p = state.partner!.display_name;
-  const [view, setView] = useSessionState<View>('bp-tasks-view', 'mine');
+  const [stored, setView] = useSessionState<View | 'shared'>('bp-tasks-view', 'mine');
+  const view: View = stored === 'theirs' ? 'theirs' : 'mine'; // (there used to be a Shared tab)
   const order = state.me.task_order;
 
-  const reviewIn = (tasks: Task[]) => tasks.filter((t) => d.pendingClaimByTask.get(t.id)?.claimed_by === d.partnerId).length;
-  const sharedAlerts = d.proposalsForMe.length + reviewIn(d.sharedTasks);
-  const theirAlerts = reviewIn(d.tasksForPartner);
+  const myAlerts = d.proposalsForMe.length;
+  const theirAlerts = d.claimsToReview.length;
 
   /** Save a list's new order, keeping the rest of your order as it was. */
   const reorder = (ids: string[]) => {
@@ -28,85 +30,77 @@ export function Tasks() {
     act((b) => b.setTaskOrder([...ids, ...rest]));
   };
 
-  const subtitle = {
-    mine: `Set by ${p}. Do them, tap “I did it!”, and ${p} approves.`,
-    shared: `Jobs either of you can do. You each agree on what you’d earn.`,
-    theirs: `You set these for ${p}, and you decide what each is worth.`,
-  }[view];
+  const liveCount = (tasks: Task[]) => tasks.filter((t) => isLive(t, now)).length;
 
   return (
     <div className="stack">
       <header className="screen-head">
         <h1 className="screen-title">Tasks</h1>
-        <p className="screen-sub">{subtitle}</p>
+        <p className="screen-sub">
+          {view === 'mine'
+            ? `Things you can do, set by ${p} or shared between you. Tap “I did it!” and ${p} approves.`
+            : `Things ${p} can do. You decide what your tasks are worth; shared ones you agree on together.`}
+        </p>
       </header>
 
       <Segmented
         value={view}
         onChange={setView}
         options={[
-          { value: 'mine', label: <>For you <Count n={d.tasksForMe.filter(isActive).length} /></> },
-          { value: 'shared', label: <>Shared <Count n={sharedAlerts || d.sharedTasks.filter(isActive).length} alert={sharedAlerts > 0} /></> },
-          { value: 'theirs', label: <>For {p} <Count n={theirAlerts || d.tasksForPartner.filter(isActive).length} alert={theirAlerts > 0} /></> },
+          { value: 'mine', label: <>For you <Count n={myAlerts || liveCount(d.tasksForMe)} alert={myAlerts > 0} /></> },
+          { value: 'theirs', label: <>For {p} <Count n={theirAlerts || liveCount(d.tasksForPartner)} alert={theirAlerts > 0} /></> },
         ]}
       />
 
-      {view === 'mine' && (
-        <TaskList
-          tasks={d.tasksForMe}
-          done={d.doneForMe}
-          order={order}
-          onReorder={reorder}
-          empty={
-            <Empty title="Nothing on your plate">
-              {p} hasn’t set you any tasks yet. Give them a nudge, or set some for them first.
-            </Empty>
-          }
-        />
-      )}
-
-      {view === 'shared' && (
+      {view === 'mine' ? (
         <>
-          {(d.proposalsForMe.length > 0 || d.proposalsWaiting.length > 0) && (
+          {d.proposalsForMe.length > 0 && (
             <div className="stack-sm">
               {d.proposalsForMe.map((t) => (
                 <ProposalCard key={t.id} task={t} />
               ))}
-              {d.proposalsWaiting.map((t) => (
-                <ProposalCard key={t.id} task={t} />
-              ))}
             </div>
           )}
-          <button className="btn btn-caramel block" onClick={() => sheets.open({ kind: 'task', shared: true })}>
-            <Plus size={18} /> New shared task
-          </button>
           <TaskList
-            tasks={d.sharedTasks}
-            done={d.doneShared}
+            tasks={d.tasksForMe}
+            done={d.doneForMe}
             order={order}
+            now={now}
             onReorder={reorder}
             empty={
-              d.proposalsForMe.length + d.proposalsWaiting.length === 0 ? (
-                <Empty title="Nothing shared yet">
-                  Jobs that just need doing, like the toilet or the lawn. Whoever hates it more can ask for more brownies.
+              d.proposalsForMe.length === 0 ? (
+                <Empty title="Nothing on your plate">
+                  {p} hasn’t set you any tasks yet. Give them a nudge, or set some for them first.
                 </Empty>
               ) : null
             }
           />
         </>
-      )}
-
-      {view === 'theirs' && (
+      ) : (
         <>
           <button className="btn btn-caramel block" onClick={() => sheets.open({ kind: 'task' })}>
-            <Plus size={18} /> New task for {p}
+            <Plus size={18} /> New task
           </button>
+          {d.proposalsWaiting.length > 0 && (
+            <div className="stack-sm">
+              {d.proposalsWaiting.map((t) => (
+                <ProposalCard key={t.id} task={t} />
+              ))}
+            </div>
+          )}
           <TaskList
             tasks={d.tasksForPartner}
             done={d.doneForPartner}
             order={order}
+            now={now}
             onReorder={reorder}
-            empty={<Empty title={`Give ${p} something to earn`}>Dishes, a foot rub, an epic playlist… anything you’d love them to do.</Empty>}
+            empty={
+              d.proposalsWaiting.length === 0 ? (
+                <Empty title={`Give ${p} something to earn`}>
+                  Dishes, a foot rub, an epic playlist… or a shared job either of you can do.
+                </Empty>
+              ) : null
+            }
           />
         </>
       )}
@@ -118,23 +112,28 @@ function Count({ n, alert }: { n: number; alert?: boolean }) {
   return <span className={`seg-count ${alert ? 'alert' : ''}`}>{n}</span>;
 }
 
-/** Live tasks (drag to reorder), then resting ones, then finished one-offs. */
+/** Live tasks (drag to reorder), then resting/sleeping ones, then finished one-offs. */
 function TaskList({
   tasks,
   done,
   order,
+  now,
   onReorder,
   empty,
 }: {
   tasks: Task[];
   done: Task[];
   order: string[] | undefined;
+  now: number;
   onReorder: (ids: string[]) => void;
   empty: React.ReactNode;
 }) {
-  const live = inOrder(tasks.filter(isActive), order);
+  const live = inOrder(
+    tasks.filter((t) => isLive(t, now)),
+    order,
+  );
   const resting = inOrder(
-    tasks.filter((t) => !isActive(t)),
+    tasks.filter((t) => !isLive(t, now)),
     order,
   );
   return (
@@ -145,7 +144,7 @@ function TaskList({
         <details className="done-list resting-list">
           <summary>
             Resting <span className="seg-count">{resting.length}</span>
-            <span className="summary-hint">paused until they’re needed</span>
+            <span className="summary-hint">paused or sleeping</span>
           </summary>
           <div className="stack-sm resting-cards">
             {resting.map((t) => (

@@ -102,8 +102,16 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     unpair: () => rpc('unpair'),
     newPairCode: () => rpc<string>('new_pair_code'),
 
-    createTask: (t: TaskInput) => rpc('create_task', { p_shared: t.shared, p_active: t.startActive ?? true, ...taskArgs(t) }),
-    editTask: (id: UUID, t: TaskInput) => rpc('edit_task', { p_task_id: id, p_active: t.startActive ?? null, ...taskArgs(t) }),
+    createTask: (t: TaskInput) =>
+      rpc('create_task', { p_shared: t.shared, p_active: t.startActive ?? true, p_sleep_hours: t.repeatable ? t.sleepHours : null, ...taskArgs(t) }),
+    editTask: (id: UUID, t: TaskInput) =>
+      rpc('edit_task', {
+        p_task_id: id,
+        p_active: t.startActive ?? null,
+        p_shared: t.shared,
+        p_sleep_hours: t.repeatable ? t.sleepHours : null,
+        ...taskArgs(t),
+      }),
     respondShared: (id, accept) => rpc('respond_shared_task', { p_task_id: id, p_accept: accept }),
     setTaskActive: (id, active) => rpc('set_task_active', { p_task_id: id, p_active: active }),
     bumpTask: (id) => rpc('bump_task', { p_task_id: id }),

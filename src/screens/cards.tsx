@@ -4,7 +4,7 @@ import { useLoaded } from '../app/store';
 import { Amount } from '../components/Brownie';
 import type { Claim, Redemption, Reward, Task } from '../lib/types';
 import { timeAgo } from '../lib/util';
-import { basePrice, canManage, durationLabel, floorValue, freshness, graceLeft, isActive, taskValue } from '../lib/tasks';
+import { basePrice, canManage, durationLabel, floorValue, freshness, graceLeft, isActive, isAsleep, sleepLeft, taskValue } from '../lib/tasks';
 import { useNow } from '../app/useNow';
 import { useSheets } from './sheets';
 import { AsyncButton } from '../components/ui';
@@ -146,6 +146,8 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
   const me = d.myId;
   const claim = d.pendingClaimByTask.get(task.id);
   const active = isActive(task);
+  const asleep = isAsleep(task, now);
+  const live = active && !asleep;
   const iDoIt = !!task.shared || task.assigned_to === me;
   const iSetIt = !task.shared && task.created_by === me;
   const manage = canManage(task, me);
@@ -157,7 +159,7 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
 
   return (
     <article
-      className={`card task-card ${claimedByPartner ? 'needs-you' : ''} ${claimedByMe ? 'is-waiting' : ''} ${active ? '' : 'is-resting'}`}
+      className={`card task-card ${claimedByPartner ? 'needs-you' : ''} ${claimedByMe ? 'is-waiting' : ''} ${live ? '' : 'is-resting'}`}
     >
       <div className="tc-top">
         {handle}
@@ -194,14 +196,24 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
 
       <div className="tc-tags">
         {task.shared && (
-          <span className="tag">
-            <Users size={12} /> Either of us
+          <span className="tag tag-shared">
+            <Users size={12} /> Shared
           </span>
         )}
         <RepeatTag repeatable={task.repeatable} />
         {!active && (
           <span className="tag">
             <Moon size={12} /> Resting
+          </span>
+        )}
+        {active && asleep && (
+          <span className="tag tag-sleep">
+            <Moon size={12} /> Sleeping · back in {durationLabel(Math.max(1, Math.ceil(sleepLeft(task, now))))}
+          </span>
+        )}
+        {task.repeatable && task.sleep_hours != null && !asleep && active && (
+          <span className="tag">
+            <Moon size={12} /> {task.sleep_hours === 0 ? 'Rests after' : `Sleeps ${durationLabel(task.sleep_hours)} after`}
           </span>
         )}
       </div>
@@ -229,7 +241,7 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
       ) : (
         <div className="tc-bottom">
           <div className="tc-tools">
-            {manage && active && task.decay_hours ? (
+            {manage && live && task.decay_hours ? (
               <AsyncButton
                 className="tool-btn warm"
                 disabled={fresh >= 0.999}
@@ -243,11 +255,11 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
             {manage && (
               <AsyncButton
                 className="tool-btn"
-                onClick={() => act((b) => b.setTaskActive(task.id, !active), { success: active ? 'Resting until it’s needed' : 'Back on the menu' })}
-                aria-label={active ? 'Pause this task' : 'Bring this task back'}
-                title={active ? 'Pause' : 'Bring back'}
+                onClick={() => act((b) => b.setTaskActive(task.id, !live), { success: live ? 'Resting until it’s needed' : 'Back on the menu' })}
+                aria-label={live ? 'Pause this task' : asleep ? 'Wake it up now' : 'Bring this task back'}
+                title={live ? 'Pause' : asleep ? 'Wake now' : 'Bring back'}
               >
-                {active ? <Pause size={19} /> : <Play size={19} />}
+                {live ? <Pause size={19} /> : <Play size={19} />}
               </AsyncButton>
             )}
             {(iSetIt || task.shared) && (
@@ -257,7 +269,7 @@ export function TaskCard({ task, handle }: { task: Task; handle?: ReactNode }) {
             )}
           </div>
           {iDoIt &&
-            active &&
+            live &&
             (claimedByMe ? (
               <span className="tc-status">
                 <span className="pulse-dot" /> Waiting for {p}

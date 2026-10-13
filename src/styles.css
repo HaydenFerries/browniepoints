@@ -2482,3 +2482,11 @@ textarea::placeholder {
   width: 42px;
   height: 42px;
 }
+.tag-shared {
+  background: rgba(240, 180, 94, 0.14);
+  color: var(--caramel-hi);
+}
+.tag-sleep {
+  background: rgba(159, 211, 255, 0.12);
+  color: #c4e4ff;
+}

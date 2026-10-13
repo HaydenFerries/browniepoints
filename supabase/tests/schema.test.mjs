@@ -347,6 +347,47 @@ ok((await state(A)).tasks.find((t) => t.id === premade).active === false, 'edits
 await as(A, "select public.edit_task($1, 'Rake the leaves', '', 15, null, false, 72, 25, 0, null, null, true)", [premade]);
 ok((await state(A)).tasks.find((t) => t.id === premade).active === true, 'editing can switch it back on');
 
+// sleeping after it's done
+const dishes2 = (await as(A, "select public.create_task('Dishes', '', false, 10, null, true, null, null, true, 0, null, null, 12) as id")).rows[0].id;
+const doIt = async (id) => {
+  await as(B, 'select public.claim_task($1, $2)', [id, '']);
+  const c = (await state(A)).claims.find((x) => x.task_id === id && x.status === 'pending');
+  await as(A, 'select public.review_claim($1, true, $2)', [c.id, '']);
+};
+await doIt(dishes2);
+st = (await state(B)).tasks.find((t) => t.id === dishes2);
+ok(st.sleeping_until && Date.parse(st.sleeping_until) > Date.now() + 11 * 3600e3, 'a done repeatable task sleeps for its sleep time');
+await expectError(B, 'select public.claim_task($1, $2)', [dishes2, ''], /sleeping/, 'a sleeping task cannot be claimed');
+await db.query("update public.tasks set sleeping_until = now() - interval '1 minute' where id = $1", [dishes2]);
+ok((await claimOf(dishes2)) === 10, 'it wakes up by itself when the time is up');
+await doIt(dishes2);
+await expectError(B, 'select public.set_task_active($1, true)', [dishes2], /Only the person who set/, 'the doer cannot wake it early');
+await as(A, 'select public.set_task_active($1, true)', [dishes2]);
+st = (await state(A)).tasks.find((t) => t.id === dishes2);
+ok(st.sleeping_until === null && st.active, 'the setter can wake it early');
+const restAfter = (await as(A, "select public.create_task('Clean the oven', '', false, 20, null, true, null, null, true, 0, null, null, 0) as id")).rows[0].id;
+await doIt(restAfter);
+ok((await state(A)).tasks.find((t) => t.id === restAfter).active === false, '"until switched on" rests after it is done');
+const timedSleep = (await as(A, "select public.create_task('Hoover', '', false, 40, null, true, 10, 25, true, 0, 10, null, 24) as id")).rows[0].id;
+await doIt(timedSleep);
+await db.query("update public.tasks set sleeping_until = now() - interval '1 minute', bumped_at = now() - interval '1 minute' where id = $1", [timedSleep]);
+ok((await claimOf(timedSleep)) === 40, 'a timed task wakes up fresh');
+await as(A, "select public.edit_task($1, 'Dishes', '', 10, null, true, null, null)", [dishes2]);
+ok((await state(A)).tasks.find((t) => t.id === dishes2).sleep_hours === 12, 'edits that leave sleep out keep it');
+await as(A, "select public.edit_task($1, 'Dishes', '', 10, null, true, null, null, 0, null, null, null, null, null)", [dishes2]);
+ok((await state(A)).tasks.find((t) => t.id === dishes2).sleep_hours === null, 'edits can turn sleep off');
+
+// switching a task between "for your partner" and "either of us"
+await as(A, "select public.edit_task($1, 'Dishes', '', 10, 15, true, null, null, 0, null, null, null, true)", [dishes2]);
+st = (await state(B)).tasks.find((t) => t.id === dishes2);
+ok(st.shared && st.assigned_to === null && st.awaiting === B && st.points === 15 && st.points_other === 10, 'a regular task can become a shared proposal');
+await expectError(B, "select public.edit_task($1, 'Dishes', '', 15, 10, true, null, null, 0, null, null, null, false)", [dishes2], /Only the person who set/, 'only the setter can change who does it');
+await as(A, "select public.edit_task($1, 'Dishes', '', 12, null, true, null, null, 0, null, null, null, false)", [dishes2]);
+st = (await state(B)).tasks.find((t) => t.id === dishes2);
+ok(!st.shared && st.assigned_to === B && st.points === 12 && st.awaiting === null, 'and back to a regular task');
+await as(B, 'select public.claim_task($1, $2)', [dishes2, '']);
+await expectError(A, "select public.edit_task($1, 'Dishes', '', 12, 12, true, null, null, 0, null, null, null, true)", [dishes2], /Approve or send it back/, 'cannot switch while a "done" is waiting');
+
 // personal ordering
 await as(B, 'select public.set_task_order($1::uuid[])', [[timed, tid]]);
 const orderB = (await state(B)).me.task_order;

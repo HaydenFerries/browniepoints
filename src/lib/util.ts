@@ -54,15 +54,22 @@ export function derive(state: AppState) {
 
   const open = (t: Task) => t.status === 'open';
   const solo = (t: Task) => !t.shared;
-  const tasksForMe = state.tasks.filter((t) => solo(t) && t.assigned_to === myId && open(t));
-  const tasksForPartner = state.tasks.filter((t) => solo(t) && t.created_by === myId && open(t));
-  const doneForMe = state.tasks.filter((t) => solo(t) && t.assigned_to === myId && t.status === 'done');
-  const doneForPartner = state.tasks.filter((t) => solo(t) && t.created_by === myId && t.status === 'done');
-  // shared ("either of us") tasks: live ones, and proposals still being agreed
+  // shared ("either of us") tasks: agreed ones, and proposals still being agreed
   const sharedTasks = state.tasks.filter((t) => t.shared && open(t) && !t.awaiting);
+  const claimedBy = (t: Task) => pendingClaimByTask.get(t.id)?.claimed_by;
+  const tasksForMe = [
+    ...state.tasks.filter((t) => solo(t) && t.assigned_to === myId && open(t)),
+    ...sharedTasks.filter((t) => !partnerId || claimedBy(t) !== partnerId),
+  ];
+  const tasksForPartner = [
+    ...state.tasks.filter((t) => solo(t) && t.created_by === myId && open(t)),
+    ...sharedTasks.filter((t) => claimedBy(t) !== myId),
+  ];
+  const doneShared = state.tasks.filter((t) => t.shared && t.status === 'done');
+  const doneForMe = [...state.tasks.filter((t) => solo(t) && t.assigned_to === myId && t.status === 'done'), ...doneShared];
+  const doneForPartner = [...state.tasks.filter((t) => solo(t) && t.created_by === myId && t.status === 'done'), ...doneShared];
   const proposalsForMe = state.tasks.filter((t) => t.shared && open(t) && t.awaiting === myId);
   const proposalsWaiting = state.tasks.filter((t) => t.shared && open(t) && !!t.awaiting && t.awaiting !== myId);
-  const doneShared = state.tasks.filter((t) => t.shared && t.status === 'done');
   const myWishes = state.rewards.filter((r: Reward) => r.wished_by === myId);
   const partnerWishes = state.rewards.filter((r: Reward) => r.wished_by !== myId);
 

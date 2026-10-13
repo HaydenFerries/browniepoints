@@ -31,7 +31,11 @@ More ways to set tasks:
 - **Best when fresh**: a task can lose value over a day, three days, a week or two, down to a
   floor you choose. **Warm it up** to make it worth full price again; repeatable ones freshen
   up each time they're done.
-- **Resting tasks**: pause an again-and-again task until it's needed, then bring it back.
+- **Resting tasks**: pause a task until it's needed, then bring it back, or create it resting.
+- **Sleep after it's done**: an again-and-again task can sleep for a while once it's done
+  (dishes aren't dirty again straight away) and wake up by itself, or rest until switched on.
+- Shared tasks show in both of your lists with a **Shared** tag; once one of you does it, it
+  leaves the other's list. Any task can be switched between "for my partner" and "either of us".
 - **Drag to reorder** your task lists; each of you keeps your own order.
 
 Wishes lock once your partner has priced them, so the deal can't change after the fact.

@@ -65,6 +65,14 @@ const TASK_IDEAS = [
   'Walk the dog',
   'Cook dinner',
 ];
+const SLEEP_OPTIONS: [number, string][] = [
+  [6, '6 hours'],
+  [12, '12 hours'],
+  [24, '1 day'],
+  [72, '3 days'],
+  [168, '1 week'],
+  [0, 'Until switched on'],
+];
 const SHARED_IDEAS = ['Clean the toilet', 'Mow the lawn', 'Vacuum the house', 'Change the sheets', 'Do the grocery run', 'Wash the car'];
 
 function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared?: boolean; onClose: () => void }) {
@@ -77,6 +85,8 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
   const [partnerPoints, setPartnerPoints] = useState(task ? basePrice(task, partnerId) : 10);
   const [myPoints, setMyPoints] = useState(task?.shared ? basePrice(task, d.myId) : 10);
   const [repeatable, setRepeatable] = useState(task?.repeatable ?? true);
+  // after it's done: null = ready again straight away, 0 = rests until switched on, n = sleeps n hours
+  const [sleepHours, setSleepHours] = useState<number | null>(task?.sleep_hours ?? null);
   const [timed, setTimed] = useState(!!task?.decay_hours);
   const [decayHours, setDecayHours] = useState(task?.decay_hours ?? 72);
   const [grace, setGrace] = useState(task?.decay_grace_hours ?? 0);
@@ -97,7 +107,7 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const canRemove = !task || canManage(task, d.myId);
-  const canSwitchType = !task || (!!task.shared && !!task.awaiting && task.created_by === d.myId);
+  const canSwitchType = !task || task.created_by === d.myId;
 
   const split = shared && !samePrice;
   const autoStale = (price: number) => Math.max(1, Math.round(price / 4));
@@ -123,6 +133,7 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
       stalePartner: timed ? theirStale : null,
       staleMine: timed && shared ? myStale : null,
       startActive,
+      sleepHours: repeatable ? sleepHours : null,
     };
     const success = shared
       ? `Sent to ${partner} to agree`
@@ -131,18 +142,7 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
         : startActive
           ? `Task sent to ${partner}`
           : 'Saved to Resting. Switch it on when it’s needed';
-    const ok = await act(
-      async (b) => {
-        if (!task) return b.createTask(input);
-        if (shared !== !!task.shared) {
-          // switching a proposal between shared and regular: replace it
-          await b.removeTask(task.id);
-          return b.createTask(input);
-        }
-        return b.editTask(task.id, input);
-      },
-      { success },
-    );
+    const ok = await act((b) => (task ? b.editTask(task.id, input) : b.createTask(input)), { success });
     setBusy(false);
     if (ok) onClose();
   }
@@ -277,6 +277,36 @@ function TaskSheet({ task, shared: startShared, onClose }: { task?: Task; shared
         </div>
       </div>
 
+      {repeatable && (
+        <div className="field">
+          <span className="field-label">After it’s done</span>
+          <div className="toggle-pair">
+            <button type="button" className={sleepHours === null ? 'on' : ''} onClick={() => setSleepHours(null)}>
+              Ready again
+            </button>
+            <button type="button" className={sleepHours !== null ? 'on' : ''} onClick={() => setSleepHours(sleepHours ?? 24)}>
+              <Moon size={16} /> Sleeps a while
+            </button>
+          </div>
+          {sleepHours !== null && (
+            <div className="timed-options">
+              <div className="chips">
+                {SLEEP_OPTIONS.map(([h, label]) => (
+                  <button key={h} type="button" className={`chip ${sleepHours === h ? 'chip-on' : ''}`} onClick={() => setSleepHours(h)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="small muted">
+                {sleepHours === 0
+                  ? 'Once it’s done it goes to Resting until one of you switches it back on.'
+                  : `Once it’s done it sleeps for ${durationLabel(sleepHours)}, then wakes up by itself${timed ? ' at full price' : ''}. Like dishes: they’re not dirty again straight away.`}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="field">
         <span className="field-label">Price over time</span>
         <div className="toggle-pair">
@@ -396,6 +426,7 @@ function ProposalSheet({ task, onClose }: { task: Task; onClose: () => void }) {
                       decayHours: task.decay_hours ?? null,
                       decayFloor: task.decay_floor_pct ?? 25,
                       decayGrace: task.decay_grace_hours ?? 0,
+                      sleepHours: task.sleep_hours ?? null,
                       stalePartner: fits(rawStale(task, partnerId), partnerPoints),
                       staleMine: fits(rawStale(task, d.myId), myPoints),
                     }),
