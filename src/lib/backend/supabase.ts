@@ -53,8 +53,13 @@ export function createSupabaseBackend(url: string, key: string): Backend {
       const { data } = sb.auth.onAuthStateChange((event, session) => {
         const e: AuthEvent =
           event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'PASSWORD_RECOVERY' ? event : 'OTHER';
+        // Offline with an expired token Supabase reports no session; it's still you
+        // (the token refreshes once back online). A real sign-out clears LAST_USER_KEY.
+        const id =
+          session?.user.id ??
+          (event !== 'SIGNED_OUT' && !navigator.onLine ? localStorage.getItem(LAST_USER_KEY) : null);
         // Defer so we never call Supabase from inside its own auth callback.
-        setTimeout(() => cb(session?.user.id ?? null, e), 0);
+        setTimeout(() => cb(id, e), 0);
       });
       return () => data.subscription.unsubscribe();
     },

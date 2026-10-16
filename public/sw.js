@@ -1,19 +1,40 @@
-// Brownie Points service worker: makes the app installable and quick to open.
-// Pages are network-first (so new deploys show up), hashed build assets are
-// cache-first. Supabase and other cross-origin requests are never touched,
-// and neither is version.json (the app's "is there a newer version?" check).
+// Brownie Points service worker: makes the app installable and lets it open
+// with no signal.
+// * On install it downloads the whole app (the build fills in PRECACHE and a
+//   per-build BUILD id), so a cold start offline still works.
+// * Pages are network-first (so new deploys show up) but fall back to the saved
+//   copy after a few seconds or when offline. Built files are cache-first.
+// * Supabase and other cross-origin requests are never touched, and neither is
+//   version.json (the app's "is there a newer version?" check).
 // It also shows push notifications and opens the right screen when tapped.
-const CACHE = 'bp-v3';
+const BUILD = 'dev';
+const PRECACHE = [];
+const CACHE = 'bp-' + BUILD;
 
-self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      // straight from the network, so a fresh deploy never saves stale files
+      .then((c) => c.addAll(PRECACHE.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting()),
+  );
+});
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('bp-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
+
+/** The saved app page (any query string, any path inside the app). */
+const savedPage = (req) =>
+  caches
+    .match(req, { ignoreSearch: true })
+    .then((hit) => hit || caches.match('./', { ignoreSearch: true }))
+    .then((hit) => hit || caches.match('./index.html'));
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -23,20 +44,25 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/version.json')) return;
 
   if (req.mode === 'navigate') {
+    const network = fetch(req).then((res) => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+      }
+      return res;
+    });
+    // Patchy signal: don't leave a blank screen; use the saved copy after 4s.
+    const slow = new Promise((resolve) => setTimeout(resolve, 4000)).then(savedPage);
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match('./'))),
+      Promise.race([network, slow.then((hit) => hit || network)]).catch(() =>
+        savedPage(req).then((hit) => hit || Response.error()),
+      ),
     );
     return;
   }
 
   event.respondWith(
-    caches.match(req).then(
+    caches.match(req, { ignoreSearch: true }).then(
       (hit) =>
         hit ||
         fetch(req).then((res) => {
