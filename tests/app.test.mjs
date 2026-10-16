@@ -176,7 +176,17 @@ await throws(() => sam.getState(), /hasn.t synced yet/, 'after signing out nothi
 online = true;
 
 // Push notification wording
-const push = await import('../supabase/functions/send-push/messages.ts');
+// The Edge Function imports npm:/jsr: packages that only exist on Supabase: stand them in.
+const { register } = await import('node:module');
+const stub = 'export const createClient = () => {}; export const ApplicationServer = {}; export const importVapidKeys = () => {};';
+register(
+  'data:text/javascript,' +
+    encodeURIComponent(`export async function resolve(spec, ctx, next) {
+      if (/^(npm|jsr):/.test(spec)) return { url: 'data:text/javascript,' + encodeURIComponent(${JSON.stringify(stub)}), shortCircuit: true };
+      return next(spec, ctx);
+    }`),
+);
+const push = await import('../supabase/functions/send-push/index.ts');
 const row = (kind, extra = {}) => ({ id: 1, couple_id: C, actor_id: A, kind, title: 'Dishes', value: 10, delta: null, beneficiary_id: null, note: '', ...extra });
 ok(push.messageFor(row('task_claimed'), 'Alex').title === 'Alex did ‘Dishes’', 'claims ask the partner to approve');
 ok(push.messageFor(row('task_approved', { delta: 10 }), 'Sam').title === '+10 brownies 🍫', 'approvals show the brownies earned');

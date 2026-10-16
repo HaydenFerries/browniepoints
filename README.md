@@ -174,18 +174,19 @@ Push messages are sent by a small Supabase Edge Function,
 [`supabase/functions/send-push`](supabase/functions/send-push), whenever
 something lands in the activity feed.
 
-1. Run `npm run vapid-keys` on your computer. It prints a public and a private key.
-2. Add the **public** key as the `VITE_VAPID_PUBLIC_KEY` repository variable (and in
-   `.env.local`), then redeploy.
+1. Run `npm run vapid-keys -- you@example.com` **once** and save the output somewhere
+   safe. It prints every value below. Each run makes a new random set, so never mix
+   values from different runs.
+2. Add `VITE_VAPID_PUBLIC_KEY` as a repository variable (and in `.env.local`), then redeploy.
 3. Supabase → **Edge Functions** → *Deploy a new function* → *Via Editor*, name it
-   `send-push`, and give it the two files in `supabase/functions/send-push/`
-   (`index.ts` and `messages.ts`), then deploy. Or from a terminal:
+   `send-push`, replace the sample `index.ts` with
+   [`supabase/functions/send-push/index.ts`](supabase/functions/send-push/index.ts) (it's
+   one self-contained file), then deploy. Or from a terminal:
    `npx supabase functions deploy send-push --no-verify-jwt --project-ref <your-ref>`. In the function's
    settings, turn **off** *Enforce JWT verification*: the function checks requests itself.
 4. Supabase → Edge Functions → **Secrets**: add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
-   `VAPID_SUBJECT` (`mailto:` plus your email) and `PUSH_WEBHOOK_SECRET` (any long
-   random string).
-5. Supabase → Database → **Webhooks** → *Create a new hook*, twice:
+   `VAPID_SUBJECT` and `PUSH_WEBHOOK_SECRET`, all from that same output.
+5. Supabase → Integrations → **Database Webhooks** → *Create a new hook*, twice:
    - name `push-activity`, table `activity`, event *Insert*;
    - name `push-signups`, table `profiles`, event *Insert* (tells admins about new sign-ups).
 
