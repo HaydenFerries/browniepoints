@@ -1,3 +1,4 @@
+import type { SyncControl } from './offline';
 import type { AccountStatus, Activity, AdminUser, AppState, Profile, RewardInput, TaskInput, UUID } from '../types';
 
 export type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'PASSWORD_RECOVERY' | 'OTHER';
@@ -60,11 +61,26 @@ export interface Backend {
   adminSetStatus(id: UUID, status: Exclude<AccountStatus, 'pending'>, note: string): Promise<void>;
   adminRemove(id: UUID): Promise<void>;
 
+  /** Offline queue and sync status (real backend only). */
+  sync?: SyncControl;
+
+  /** Push notifications (real backend, once a VAPID key is configured). */
+  push?: {
+    publicKey: string;
+    save(sub: PushSubscriptionJSON): Promise<void>;
+    remove(endpoint: string): Promise<void>;
+    /** Sends a test notification to your own phones. */
+    test(): Promise<void>;
+  };
+
   /** Demo-only helpers (undefined on the real backend). */
   demo?: {
     seed(): Promise<void>;
     users(): Profile[];
     switchUser(id: UUID): Promise<void>;
     reset(): void;
+    /** Pretend the connection is gone, to try offline mode. */
+    offline(): boolean;
+    setOffline(on: boolean): Promise<void>;
   };
 }

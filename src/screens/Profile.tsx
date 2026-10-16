@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { HeartCrack, LogOut, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
+import { Bell, HeartCrack, LogOut, RefreshCw, ShieldCheck, Shuffle, Wifi, WifiOff } from 'lucide-react';
 import { useLoaded } from '../app/store';
 import { leaveDemo } from '../lib/backend';
+import { disablePush, enablePush, pushEnabled, pushSupport } from '../lib/push';
 import { Avatar, Sheet } from '../components/ui';
 import { useSheets } from './sheets';
 
 export const AVATARS = ['🍫', '🧁', '🍪', '🍩', '🍰', '🍓', '🍒', '🍯', '☕', '🍦', '🥐', '🐻', '🦊', '🐰', '🐱', '🐶', '🌸', '🌙', '⭐', '💛'];
 
 export function ProfileSheet({ onClose }: { onClose: () => void }) {
-  const { state, backend, act } = useLoaded();
+  const { state, backend, act, sync, refresh } = useLoaded();
   const sheets = useSheets();
   const partner = state.partner;
   const [name, setName] = useState(state.me.display_name);
@@ -29,6 +30,13 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
   // activity is newest-first, so this is the most recent pairing
   const since = partner ? state.activity.find((a) => a.kind === 'paired')?.created_at : undefined;
   const demoPartner = backend.demo?.users().find((u) => u.id !== state.me.id);
+
+  async function signOut() {
+    await disablePush(backend).catch(() => {}); // this phone stops getting your pings
+    await backend.signOut();
+    onClose();
+  }
+  const waiting = sync?.pending.length ?? 0;
 
   return (
     <Sheet open onClose={onClose} title="Your profile">
@@ -87,6 +95,8 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
         </section>
       )}
 
+      <NotificationsSection />
+
       {state.me.is_admin && (
         <section className="profile-section">
           <h3 className="mini-title">Admin</h3>
@@ -106,13 +116,24 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
       {backend.demo && (
         <section className="profile-section demo-box">
           <h3 className="mini-title">Demo mode</h3>
-          <p className="muted small">Everything lives in this browser. Open a second tab to play the other partner, or switch here.</p>
+          <p className="muted small">Everything lives in this browser. Open a second tab to play the other partner, or switch here. “Pretend I’m offline” tries out offline mode in this tab.</p>
           <div className="row wrap">
             {demoPartner && (
               <button className="btn btn-ghost sm" onClick={() => backend.demo!.switchUser(demoPartner.id).then(onClose)}>
                 <Shuffle size={15} /> Be {demoPartner.display_name}
               </button>
             )}
+            <button
+              className="btn btn-ghost sm"
+              onClick={async () => {
+                await backend.demo!.setOffline(!backend.demo!.offline());
+                await refresh();
+                onClose();
+              }}
+            >
+              {backend.demo.offline() ? <Wifi size={15} /> : <WifiOff size={15} />}
+              {backend.demo.offline() ? 'Back online' : 'Pretend I’m offline'}
+            </button>
             <button
               className="btn btn-ghost sm"
               onClick={() => {
@@ -140,7 +161,26 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
       <section className="profile-section">
         <h3 className="mini-title">Account</h3>
         {email && <p className="muted small">{email}</p>}
-        <button className="btn btn-ghost block" onClick={() => backend.signOut().then(onClose)}>
+        <button
+          className="btn btn-ghost block"
+          onClick={() =>
+            waiting
+              ? sheets.open({
+                  kind: 'confirm',
+                  title: 'Sign out with changes waiting?',
+                  body: (
+                    <p>
+                      {waiting === 1 ? '1 change hasn’t' : `${waiting} changes haven’t`} synced yet, and signing out throws{' '}
+                      {waiting === 1 ? 'it' : 'them'} away. Get back online first to keep {waiting === 1 ? 'it' : 'them'}.
+                    </p>
+                  ),
+                  confirmLabel: 'Sign out anyway',
+                  danger: true,
+                  onConfirm: signOut,
+                })
+              : signOut()
+          }
+        >
           <LogOut size={16} /> Sign out
         </button>
       </section>
@@ -156,5 +196,86 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
         </a>
       </p>
     </Sheet>
+  );
+}
+
+/** Push notifications for this phone (hidden in the demo and until a VAPID key is set). */
+function NotificationsSection() {
+  const { backend, state, toast } = useLoaded();
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const support = pushSupport();
+  useEffect(() => {
+    pushEnabled().then(setOn, () => setOn(false));
+  }, []);
+  if (!backend.push) return null;
+  const partner = state.partner?.display_name ?? 'your partner';
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      if (on) {
+        await disablePush(backend);
+        setOn(false);
+        toast('Notifications off on this phone.');
+      } else {
+        await enablePush(backend);
+        setOn(true);
+        toast('Notifications on! 🔔', 'success');
+      }
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+    setBusy(false);
+  }
+
+  async function test() {
+    setBusy(true);
+    try {
+      await backend.push!.test();
+      toast('Test sent. It should pop up in a moment.', 'success');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <section className="profile-section">
+      <h3 className="mini-title">Notifications</h3>
+      {support === 'ios-browser' ? (
+        <p className="muted small">
+          On iPhone, add Brownie Points to your Home Screen first (Share → Add to Home Screen), then open it from there to switch on
+          notifications.
+        </p>
+      ) : support === 'unsupported' ? (
+        <p className="muted small">This browser can’t show notifications. Try Chrome, or Safari from the Home Screen.</p>
+      ) : (
+        <>
+          <div className="switch-row">
+            <Bell size={20} className="switch-icon" />
+            <span className="grow">
+              <strong className="block">Notifications on this phone</strong>
+              <span className="muted small">A ping when {partner} needs you: things to approve, new tasks and wishes, gifts.</span>
+            </span>
+            <button
+              role="switch"
+              aria-checked={!!on}
+              aria-label="Notifications on this phone"
+              className={'switch' + (on ? ' on' : '')}
+              disabled={busy || on === null}
+              onClick={toggle}
+            >
+              <span />
+            </button>
+          </div>
+          {on && (
+            <button className="btn btn-ghost sm" disabled={busy} onClick={test}>
+              Send a test
+            </button>
+          )}
+        </>
+      )}
+    </section>
   );
 }

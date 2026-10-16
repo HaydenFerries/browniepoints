@@ -2,7 +2,8 @@
 // Pages are network-first (so new deploys show up), hashed build assets are
 // cache-first. Supabase and other cross-origin requests are never touched,
 // and neither is version.json (the app's "is there a newer version?" check).
-const CACHE = 'bp-v2';
+// It also shows push notifications and opens the right screen when tapped.
+const CACHE = 'bp-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -46,5 +47,41 @@ self.addEventListener('fetch', (event) => {
           return res;
         }),
     ),
+  );
+});
+
+// Push notifications from the send-push Edge Function: { title, body, url, tag }
+self.addEventListener('push', (event) => {
+  let msg = {};
+  try {
+    msg = event.data ? event.data.json() : {};
+  } catch {
+    msg = { body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(msg.title || 'Brownie Points', {
+      body: msg.body || '',
+      icon: 'icons/icon-192.png',
+      badge: 'icons/badge-96.png',
+      tag: msg.tag || undefined,
+      renotify: !!msg.tag,
+      data: { url: msg.url || '#home' },
+    }),
+  );
+});
+
+// Tapping a notification: bring the app to the front on the right screen.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const hash = (event.notification.data && event.notification.data.url) || '';
+  const target = new URL('./' + (hash.startsWith('#') ? hash : ''), self.registration.scope).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      const open = wins.find((w) => w.url.startsWith(self.registration.scope));
+      if (open) {
+        return open.focus().then((w) => (w || open).navigate(target)).catch(() => self.clients.openWindow(target));
+      }
+      return self.clients.openWindow(target);
+    }),
   );
 });

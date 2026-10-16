@@ -159,3 +159,19 @@ await sharp(src('brownie-stack-dark.jpg'))
   .toFile(path.join(genDir, 'hero.webp'));
 
 console.log('images written');
+
+// Notification badge (Android status bar): a plain white brownie silhouette.
+{
+  const size = 96;
+  const inner = await sharp(cut).resize({ width: size - 12, height: size - 12, fit: 'inside' }).ensureAlpha().toBuffer();
+  const alpha = await sharp(inner).extractChannel(3).toBuffer();
+  const im = await sharp(inner).metadata();
+  const white = await sharp({ create: { width: im.width, height: im.height, channels: 3, background: '#ffffff' } })
+    .joinChannel(alpha)
+    .png()
+    .toBuffer();
+  await sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: white, gravity: 'center' }])
+    .png({ compressionLevel: 9 })
+    .toFile(path.join(iconDir, 'badge-96.png'));
+}

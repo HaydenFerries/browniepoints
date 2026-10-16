@@ -2490,3 +2490,126 @@ textarea::placeholder {
   background: rgba(159, 211, 255, 0.12);
   color: #c4e4ff;
 }
+
+/* --------------------------------------------------------------------------
+   Offline mode: a slim pill under the top bar, and the "Couldn't sync" sheet
+   -------------------------------------------------------------------------- */
+.sync-row {
+  display: flex;
+  justify-content: center;
+  padding: 26px 16px 0;
+  margin-bottom: -18px;
+}
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: rgba(36, 17, 10, 0.92);
+  color: var(--cream-dim);
+  font: 700 13.5px var(--font-body);
+  animation: toast-in 0.35s ease both;
+}
+.sync-pill svg {
+  flex: none;
+  color: var(--caramel);
+}
+.sync-pill strong {
+  color: var(--caramel-hi);
+  margin-left: 4px;
+}
+.sync-pill-alert {
+  border-color: rgba(227, 100, 123, 0.45);
+  background: rgba(227, 100, 123, 0.14);
+  color: var(--berry-hi);
+}
+.sync-pill-alert svg {
+  color: var(--berry-hi);
+}
+.spin {
+  animation: spin 1.1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.sync-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: var(--well);
+  padding: 4px 14px;
+}
+.sync-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.sync-list li:last-child {
+  border-bottom: 0;
+}
+.sync-failed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(227, 100, 123, 0.3);
+  background: rgba(227, 100, 123, 0.07);
+}
+.sync-failed .row {
+  margin-top: 6px;
+}
+
+/* On/off switch (notifications) */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.switch-icon {
+  flex: none;
+  color: var(--caramel);
+}
+.switch {
+  flex: none;
+  position: relative;
+  width: 52px;
+  height: 32px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(255, 226, 190, 0.16);
+  transition: background 0.2s ease;
+}
+.switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--cream);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+.switch.on {
+  background: var(--caramel-fill);
+}
+.switch.on span {
+  transform: translateX(20px);
+}
+.switch:disabled {
+  opacity: 0.6;
+}
+.switch-row + .btn {
+  align-self: flex-start;
+}

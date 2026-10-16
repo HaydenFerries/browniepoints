@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createBackend, type Backend } from '../lib/backend';
+import type { SyncStatus } from '../lib/backend/offline';
 import { describe } from '../lib/describe';
 import type { AppState, UUID } from '../lib/types';
 import { derive, type Derived } from '../lib/util';
@@ -18,6 +19,8 @@ interface AppCtx {
   state: AppState | null;
   d: Derived | null;
   loadError: string | null;
+  /** Offline mode: connection, queued changes and ones that couldn't sync (real backend only). */
+  sync: SyncStatus | null;
   recovery: boolean;
   endRecovery(): void;
   refresh(): Promise<void>;
@@ -56,6 +59,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toastId = useRef(1);
   const lastBalance = useRef<number | null>(null);
   const lastStatus = useRef<string | null>(null);
+  const [sync, setSync] = useState<SyncStatus | null>(() => backend.sync?.status() ?? null);
 
   const toast = useCallback((text: string, tone: ToastTone = 'info', delta?: number | null) => {
     const id = toastId.current++;
@@ -83,6 +87,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoadError((e as Error).message);
     }
   }, [backend, celebrate, toast]);
+
+  // Offline queue: show its progress, and reload once changes have gone through.
+  useEffect(() => {
+    const control = backend.sync;
+    if (!control) return;
+    let last = control.status();
+    const off = control.onChange(() => {
+      const now = control.status();
+      setSync(now);
+      if (now.pending.length < last.pending.length || now.failed.length !== last.failed.length) refresh();
+      last = now;
+    });
+    const onOnline = () => refresh();
+    window.addEventListener('online', onOnline);
+    return () => {
+      off();
+      window.removeEventListener('online', onOnline);
+    };
+  }, [backend, refresh]);
 
   // Auth
   useEffect(() => {
@@ -158,6 +181,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     state,
     d,
     loadError,
+    sync,
     recovery,
     endRecovery: () => setRecovery(false),
     refresh,

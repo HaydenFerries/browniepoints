@@ -1,6 +1,9 @@
-# Push notifications: parked plan
+# Push notifications: plan (built)
 
-Status: **not started**, parked for later. This is the plan we agreed on.
+Status: **built**. Setup steps are in the README (Host your own copy → 6. Notifications).
+Differences from the plan: the sender uses `jsr:@negrel/webpush` (WebCrypto) because the
+Node `web-push` package fails on Supabase's runtime (`crypto.createECDH`), keys come from
+`npm run vapid-keys`, and webhooks are checked with an `x-webhook-secret` header.
 
 ## Goal
 
@@ -24,7 +27,7 @@ closed. Tapping the notification opens the matching screen.
    A Supabase **Database Webhook** on `INSERT` into `activity` calls an Edge Function.
 3. **Edge Function (`send-push`, Deno):** looks up the *other* partner's subscriptions
    (never the actor's), builds the message from the activity row, and sends Web Push
-   with the private VAPID key (`npm:web-push` works in Deno). Subscriptions that come
+   with the private VAPID key (`jsr:@negrel/webpush`, WebCrypto). Subscriptions that come
    back `404`/`410` are deleted.
 4. **Service worker (`public/sw.js`):** add `push` (show notification) and
    `notificationclick` (focus/open the app at the right `#hash`) handlers.
@@ -84,7 +87,7 @@ Optional later: per-person preferences (which kinds, quiet hours) as a jsonb col
 ## Setup steps for the owner (~15 min)
 
 1. Run the new migration in Supabase SQL Editor.
-2. Generate VAPID keys (`npx web-push generate-vapid-keys`). Put the **public** key in
+2. Generate VAPID keys (`npm run vapid-keys`). Put the **public** key in
    the `VITE_VAPID_PUBLIC_KEY` repo variable; put the **private** key (and a contact like
    `mailto:you@example.com`) in Supabase → Edge Functions → Secrets
    (`VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT`).

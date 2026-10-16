@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import { Gift, House, ListChecks, ScrollText } from 'lucide-react';
 import { AppProvider, useApp, useLoaded } from './store';
 import { useUpdateCheck } from './useUpdateCheck';
+import { SyncBar } from './SyncBar';
 import { BrownieIcon } from '../components/Brownie';
 import { Drip } from '../components/Drip';
 import { Avatar, Burst, Toasts } from '../components/ui';
@@ -153,6 +154,7 @@ function Main() {
     <SheetHost renderProfile={(close) => <ProfileSheet onClose={close} />}>
       <div className="app">
         <TopBar />
+        <SyncBar />
         <main className="screen" key={tab}>
           {tab === 'home' && <Home go={go} />}
           {tab === 'tasks' && <Tasks />}

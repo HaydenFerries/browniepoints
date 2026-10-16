@@ -14,6 +14,7 @@ const db = new PGlite();
 await db.exec(`
   create role anon nologin;
   create role authenticated nologin;
+  create role service_role nologin;
   create schema auth;
   create table auth.users (
     id uuid primary key, email text, raw_user_meta_data jsonb default '{}'::jsonb,
@@ -398,6 +399,82 @@ const wid = (await as(B, "select public.add_reward('Foot rub', '', '🦶') as id
 await as(B, "select public.update_reward($1, 'Long foot rub', '', '🦶')", [wid]);
 await as(A, 'select public.price_reward($1, 20)', [wid]);
 await expectError(B, "select public.update_reward($1, 'Foot rub forever', '', '🦶')", [wid], /locked/, 'a priced wish can no longer be edited');
+
+// offline sync: every change through apply_op, safe to retry
+const op = () => crypto.randomUUID();
+const applyOp = (u, id, name, args, base = null) =>
+  as(u, 'select public.apply_op($1, $2, $3::jsonb, $4::jsonb) as r', [id, name, JSON.stringify(args), base && JSON.stringify(base)]);
+const bal = async (u) => (await state(u)).balances[u] ?? 0;
+let before = await bal(B);
+const giftOp = op();
+await applyOp(A, giftOp, 'gift_brownies', { p_amount: 3, p_note: 'offline' });
+await applyOp(A, giftOp, 'gift_brownies', { p_amount: 3, p_note: 'offline' });
+ok((await bal(B)) === before + 3, 'the same op sent twice only gifts once');
+const mkOp = op();
+const made1 = (await applyOp(A, mkOp, 'create_task', { p_title: 'Offline task', p_details: '', p_shared: false, p_partner_points: 7, p_my_points: null, p_repeatable: false, p_decay_hours: null, p_decay_floor: null })).rows[0].r;
+const made2 = (await applyOp(A, mkOp, 'create_task', { p_title: 'Offline task', p_details: '', p_shared: false, p_partner_points: 7, p_my_points: null, p_repeatable: false, p_decay_hours: null, p_decay_floor: null })).rows[0].r;
+ok(made1 && made1 === made2 && (await state(B)).tasks.filter((t) => t.title === 'Offline task').length === 1, 'a retried create returns the first id and makes one task');
+const localId = crypto.randomUUID();
+await applyOp(A, op(), 'create_task', { p_id: localId, p_title: 'Made offline', p_details: '', p_shared: false, p_partner_points: 5, p_my_points: null, p_repeatable: true, p_decay_hours: null, p_decay_floor: null });
+await applyOp(A, op(), 'edit_task', { p_task_id: localId, p_title: 'Made offline, edited', p_details: '', p_partner_points: 6, p_my_points: null, p_repeatable: true, p_decay_hours: null, p_decay_floor: null });
+ok((await state(B)).tasks.some((t) => t.id === localId && t.title === 'Made offline, edited'), 'a task made offline keeps its id, so queued edits find it');
+const localWish = crypto.randomUUID();
+await applyOp(B, op(), 'add_reward', { p_id: localWish, p_title: 'Offline wish', p_details: '', p_emoji: '🌙' });
+ok((await state(A)).rewards.some((r) => r.id === localWish), 'wishes made offline keep their id too');
+const refusedOp = op();
+await expectError(B, 'select public.apply_op($1, $2, $3::jsonb)', [refusedOp, 'claim_task', JSON.stringify({ p_task_id: crypto.randomUUID(), p_note: '' })], /isn.t available/, 'a refused op reports the rule');
+ok((await db.query('select count(*)::int as n from public.applied_ops where op_id = $1', [refusedOp])).rows[0].n === 0, 'a refused op is not remembered, so it can be retried');
+await expectError(A, 'select public.apply_op($1, $2, $3::jsonb)', [op(), 'drop_everything', '{}'], /Unknown action/, 'unknown actions are refused');
+await expectError(A, 'select * from public.applied_ops', [], /permission denied/, 'the op log is not readable directly');
+
+// version checks for edits made offline
+const vt = (await as(A, "select public.create_task('Tidy the shed', '', true, 10, 10, true, null, null) as id")).rows[0].id;
+await as(B, 'select public.respond_shared_task($1, true)', [vt]);
+let vtask = (await state(B)).tasks.find((t) => t.id === vt);
+ok(vtask.version === 1, 'tasks start at version 1');
+await as(B, 'select public.bump_task($1)', [vt]).catch(() => {});
+await as(B, 'select public.set_task_active($1, false)', [vt]);
+await as(B, 'select public.set_task_active($1, true)', [vt]);
+ok((await state(B)).tasks.find((t) => t.id === vt).version === 1, 'pausing and resuming do not count as edits');
+const editArgs = (title) => ({ p_task_id: vt, p_title: title, p_details: '', p_partner_points: 10, p_my_points: 10, p_repeatable: true, p_decay_hours: null, p_decay_floor: null });
+await applyOp(A, op(), 'edit_task', editArgs('Tidy the whole shed'), { table: 'tasks', id: vt, version: 1 });
+vtask = (await state(B)).tasks.find((t) => t.id === vt);
+ok(vtask.version === 2 && vtask.last_editor === A, 'an edit bumps the version and remembers who');
+await expectError(B, 'select public.apply_op($1, $2, $3::jsonb, $4::jsonb)', [op(), 'edit_task', JSON.stringify(editArgs('Shed, lightly')), JSON.stringify({ table: 'tasks', id: vt, version: 1 })], /CONFLICT: Alex changed this/, 'an edit based on an old version is refused as a conflict');
+await applyOp(B, op(), 'edit_task', editArgs('Shed, lightly'));
+ok((await state(A)).tasks.find((t) => t.id === vt).title === 'Shed, lightly', '"use mine" resends without the version check');
+await applyOp(B, op(), 'edit_task', editArgs('Shed, lightly!'), { table: 'tasks', id: vt, version: 2 });
+ok((await state(A)).tasks.find((t) => t.id === vt).title === 'Shed, lightly!', 'your own earlier edit is never a conflict');
+const vw = (await as(B, "select public.add_reward('Picnic', '', '🧺') as id")).rows[0].id;
+await as(A, 'select public.price_reward($1, 30)', [vw]);
+await expectError(B, 'select public.apply_op($1, $2, $3::jsonb, $4::jsonb)', [op(), 'update_reward', JSON.stringify({ p_reward_id: vw, p_title: 'Big picnic', p_details: '', p_emoji: '🧺' }), JSON.stringify({ table: 'rewards', id: vw, version: 1 })], /CONFLICT: Alex/, 'wishes have versions too');
+
+// timed tasks done offline earn what they were worth then
+const late = (await as(A, "select public.create_task('Bake bread', '', false, 40, null, true, 10, 25, true, 0, 10, null) as id")).rows[0].id;
+await db.query("update public.tasks set bumped_at = now() - interval '10 hours' where id = $1", [late]);
+const claimAt = async (doneAt) => {
+  await applyOp(B, op(), 'claim_task', { p_task_id: late, p_note: '', p_done_at: doneAt });
+  const c = (await state(A)).claims.find((x) => x.task_id === late && x.status === 'pending');
+  await as(B, 'select public.withdraw_claim($1)', [c.id]);
+  return c.points;
+};
+ok((await claimAt(null)) === 10, 'claimed now, a stale task is worth its stale price');
+ok((await claimAt(new Date(Date.now() - 10 * 3600e3).toISOString())) === 40, 'claimed with the time it was really done, it earns the fresh price');
+ok((await claimAt(new Date(Date.now() + 3600e3).toISOString())) === 10, 'a done time in the future counts as now');
+await db.query("update public.tasks set bumped_at = now() - interval '58 hours' where id = $1", [late]);
+ok((await claimAt(new Date(Date.now() - 58 * 3600e3).toISOString())) === 10, 'a done time more than 48 hours back is capped');
+
+// push subscriptions
+const sub = ['https://push.example.com/abc', 'p256', 'authkey', 'Test phone'];
+await as(A, 'select public.save_push_subscription($1, $2, $3, $4)', sub);
+await as(A, 'select public.save_push_subscription($1, $2, $3, $4)', sub);
+ok((await db.query('select count(*)::int as n from public.push_subscriptions where user_id = $1', [A])).rows[0].n === 1, 'saving the same phone twice keeps one subscription');
+await expectError(A, 'select public.save_push_subscription($1, $2, $3, $4)', ['http://evil.test/x', 'a', 'b', ''], /push address/, 'only https push addresses are accepted');
+await expectError(B, 'select * from public.push_subscriptions', [], /permission denied/, 'subscriptions are not readable from the app');
+await as(B, 'select public.delete_push_subscription($1)', [sub[0]]);
+ok((await db.query('select count(*)::int as n from public.push_subscriptions')).rows[0].n === 1, 'someone else cannot remove your subscription');
+await as(A, 'select public.delete_push_subscription($1)', [sub[0]]);
+ok((await db.query('select count(*)::int as n from public.push_subscriptions')).rows[0].n === 0, 'you can remove your own');
 
 // admin removes accounts
 await expectError(A, 'select public.admin_remove_user($1)', [A], /own account/, 'admin cannot remove themselves');

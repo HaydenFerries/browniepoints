@@ -57,6 +57,9 @@ export interface Task {
   sleep_hours?: number | null;
   /** Sleeping until this time (wakes up by itself). */
   sleeping_until?: string | null;
+  /** Goes up on every edit; offline edits check it to spot clashes. */
+  version?: number;
+  last_editor?: UUID | null;
 }
 
 export interface Claim {
@@ -82,6 +85,8 @@ export interface Reward {
   archived: boolean;
   created_at: string;
   priced_at: string | null;
+  version?: number;
+  last_editor?: UUID | null;
 }
 
 export interface Redemption {

@@ -40,6 +40,28 @@ More ways to set tasks:
 
 Wishes lock once your partner has priced them, so the deal can't change after the fact.
 
+## Works offline
+
+The installed app keeps working with no signal. It opens with everything as it was last
+synced, and anything you do (mark a task done, approve, add a wish, gift…) shows straight
+away and waits on the phone until you're back online, then syncs by itself.
+
+- Changes are checked against the same rules offline, so mistakes show up immediately.
+- Each change carries an id, so a patchy connection can never apply it twice.
+- A timed task done offline earns what it was worth when you did it, not when it synced.
+- If your partner changed the same task or wish meanwhile, nothing is overwritten
+  silently: it shows under **Couldn't sync** with *Keep theirs* / *Use mine*. Anything else
+  the server refuses (say, you both did the same shared job) offers *Try again* / *Discard*.
+
+Try it in the demo: Profile → **Pretend I'm offline**.
+
+## Notifications
+
+Each of you can switch on **Notifications on this phone** (Profile) to get a ping when
+the other needs you: a task to approve, a new task or wish, a gift, a treat cashed in.
+Tapping one opens the right screen. Android works in Chrome; on iPhone/iPad (iOS 16.4+)
+the app has to be added to the Home Screen first.
+
 ## Invite-only sign-ups
 
 New accounts start as **pending** and only see an "Account waiting for approval" screen.
@@ -79,8 +101,11 @@ Other scripts:
 
 ```bash
 npm run build        # type-check + production build into dist/
-npm run test:db      # runs the Supabase migrations on PGlite and checks every rule
+npm test             # both test suites:
+npm run test:db      #   the Supabase migrations on PGlite, checking every rule
+npm run test:app     #   offline mode against a fake server, and notification wording
 npm run images       # regenerate brownie cut-outs/icons from assets-src/
+npm run vapid-keys   # make a key pair for push notifications
 ```
 
 ## Host your own copy
@@ -115,19 +140,21 @@ where id = (select id from auth.users where email = 'you@example.com');
 | `VITE_SUPABASE_URL` | Supabase → Project Settings → API | the app |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API Keys (*publishable* / anon) | the app |
 | `VITE_TURNSTILE_SITE_KEY` | Cloudflare → Turnstile → your widget (*site key*) | the app |
+| `VITE_VAPID_PUBLIC_KEY` | `npm run vapid-keys` (*public* key), see step 6 | the app |
 
 For local development put them in `.env.local` (see [`.env.example`](.env.example); it's
 git-ignored). For the deployed site add them as repository **Variables** (Settings →
 Secrets and variables → Actions → Variables).
 
-These three are public by design and end up in the website's code. Two keys must
+These are public by design and end up in the website's code. Three keys must
 **never** go in the app, the repo or its variables: Supabase's *secret / service_role*
-key, and Turnstile's *secret key* (that one goes only into Supabase, step 5).
+key, Turnstile's *secret key* (that one goes only into Supabase, step 5) and the VAPID
+*private* key (only into Supabase's Edge Function secrets, step 6).
 
 ### 4. Deploy to GitHub Pages
 
 Settings → Pages → **Source: GitHub Actions**, then push to `main`. The
-[workflow](.github/workflows/deploy.yml) tests the SQL, builds, and publishes.
+[workflow](.github/workflows/deploy.yml) runs the tests, builds, and publishes.
 
 ### 5. Turn on the captcha (after the site is deployed)
 
@@ -141,6 +168,31 @@ Do step 3 last: once it's on, Supabase rejects sign-ins that don't carry a captc
 token, so a site without the site key would lock everyone out. People already signed in
 are unaffected.
 
+### 6. Notifications (optional)
+
+Push messages are sent by a small Supabase Edge Function,
+[`supabase/functions/send-push`](supabase/functions/send-push), whenever
+something lands in the activity feed.
+
+1. Run `npm run vapid-keys` on your computer. It prints a public and a private key.
+2. Add the **public** key as the `VITE_VAPID_PUBLIC_KEY` repository variable (and in
+   `.env.local`), then redeploy.
+3. Supabase → **Edge Functions** → *Deploy a new function* → *Via Editor*, name it
+   `send-push`, and give it the two files in `supabase/functions/send-push/`
+   (`index.ts` and `messages.ts`), then deploy. Or from a terminal:
+   `npx supabase functions deploy send-push --no-verify-jwt --project-ref <your-ref>`. In the function's
+   settings, turn **off** *Enforce JWT verification*: the function checks requests itself.
+4. Supabase → Edge Functions → **Secrets**: add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+   `VAPID_SUBJECT` (`mailto:` plus your email) and `PUSH_WEBHOOK_SECRET` (any long
+   random string).
+5. Supabase → Database → **Webhooks** → *Create a new hook*, twice:
+   - name `push-activity`, table `activity`, event *Insert*;
+   - name `push-signups`, table `profiles`, event *Insert* (tells admins about new sign-ups).
+
+   For both: type *Supabase Edge Functions*, function `send-push`, and add an HTTP header
+   `x-webhook-secret` with the same value as `PUSH_WEBHOOK_SECRET`.
+6. In the app: Profile → **Notifications on this phone** → **Send a test**.
+
 ## Project layout
 
 ```
@@ -148,11 +200,14 @@ src/
   app/            App shell, routing, store (state, live updates, toasts)
   screens/        Welcome, Waiting, Pair, Home, Tasks, Rewards, History, Profile, Admin
   components/     Brownie icon, Jar, chocolate Drip, Captcha, sheets, pickers
-  lib/backend/    Backend interface + Supabase and in-browser demo implementations
+  lib/backend/    Backend interface, Supabase and in-browser demo implementations,
+                  the shared rules (rules.ts) and offline mode (offline.ts)
 supabase/
   migrations/     Schema, row-level security and all RPC functions
+  functions/      send-push Edge Function (Web Push notifications)
   tests/          PGlite test that plays every role through every rule
-scripts/          Image processing (brownie cut-out, app icons, hero)
+tests/            Offline-mode and notification tests
+scripts/          Image processing (brownie cut-out, icons, hero) and VAPID key maker
 assets-src/       Original photos
 ```
 
